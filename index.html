@@ -25,6 +25,18 @@
             display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; width: 100%;
         }
         .header-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        
+        /* Debug Panel Styling */
+        .debug-panel {
+            background: #181818; border: 1px solid #333; padding: 10px; 
+            border-radius: 4px; font-family: monospace; font-size: 0.85em; color: #888;
+            margin-top: 5px; display: flex; flex-direction: column; gap: 4px;
+        }
+        .debug-line { display: flex; justify-content: space-between; }
+        .status-success { color: #4caf50; }
+        .status-warn { color: #ff9800; }
+        .status-fail { color: #f44336; }
+
         .roster-status { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; width: 100%; margin-top: 5px; }
         .player-badge { background: #252525; padding: 10px 14px; border-radius: 4px; border-left: 4px solid var(--p-color, #fff); font-size: 0.9em; box-shadow: inset 0 0 5px rgba(0,0,0,0.2); }
         .chart-container {
@@ -33,6 +45,7 @@
             border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
         .status-text { font-size: 1.1em; color: #ccc; margin: 0; display: flex; align-items: center; }
+        .btn-group { display: flex; gap: 10px; }
         button {
             background-color: transparent; border: 1px solid #444; color: #aaa;
             font-size: 0.75em; padding: 8px 14px; cursor: pointer; border-radius: 4px;
@@ -50,9 +63,19 @@
 
     <div class="container">
         <div class="header-row">
-            <div class="status-text"><span id="globalIndicator" class="live-indicator"></span> <span id="globalStatus">Connecting pipeline...</span></div>
-            <button type="button" id="clearData">Reset Team History</button>
+            <div class="status-text"><span id="globalIndicator" class="live-indicator"></span> <span id="globalStatus">Initializing network check...</span></div>
+            <div class="btn-group">
+                <button type="button" id="forceCheckBtn" style="background: #2a2a2a; color:#fff;">Scan Now</button>
+                <button type="button" id="clearData">Reset History</button>
+            </div>
         </div>
+        
+        <div class="debug-panel">
+            <div class="debug-line"><span>Pipeline Engine:</span> <span id="debugProxy">None</span></div>
+            <div class="debug-line"><span>Last API Attempt:</span> <span id="debugTime">Never</span></div>
+            <div class="debug-line"><span>Response Validation:</span> <span id="debugResult">-</span></div>
+        </div>
+
         <div class="roster-status" id="rosterStatus"></div>
     </div>
 
@@ -61,9 +84,9 @@
     </div>
 
     <script>
-        // =========================================================
-        // 1. UPDATE YOUR SQUAD UID'S AND THE CORRECT PLATFORMS HERE
-        // =========================================================
+        // ==========================================
+        // 1. CONFIGURE YOUR ACTIVE SQUAD HERE
+        // ==========================================
         const SQUAD = [
             { uid: "2292013299", name: "You", platform: "PC", color: "#da292a" },       
             { uid: "1111111111", name: "Friend One", platform: "PC", color: "#3498db" }, 
@@ -72,23 +95,25 @@
         ];
 
         const API_KEY = "7c4c9fa6a93906fa0d110967a57a8286";
-        
-        // Accurate modern rank tiers (Master is 15000+, Apex Predator uses top 750 scaling)
         const rankBases = { "Rookie": 0, "Bronze": 1000, "Silver": 3000, "Gold": 5400, "Platinum": 8200, "Diamond": 11400, "Master": 15000, "Predator": 15000 };
         const ranksOrder = ["Rookie", "Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Predator"];
 
-        let teamHistory = JSON.parse(localStorage.getItem('apexGroupHistoryV2')) || [];
+        let teamHistory = JSON.parse(localStorage.getItem('apexGroupHistoryV3')) || [];
         let eloChart;
 
-        // Parse the raw ranking positions out of absolute overall values
+        // Rotating Proxy List to automatically bypass rate-limits or blocks
+        const PROXIES = [
+            (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+            (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+            (url) => `https://thingproxy.freeboard.io/fetch/${url}`
+        ];
+        let currentProxyIndex = 0;
+
         function getDisplayInfo(absRP) {
             if (!absRP || absRP < 0) absRP = 0;
             let currentRank = "Rookie";
             for (let i = ranksOrder.length - 1; i >= 0; i--) {
-                if (absRP >= rankBases[ranksOrder[i]]) { 
-                    currentRank = ranksOrder[i]; 
-                    break; 
-                }
+                if (absRP >= rankBases[ranksOrder[i]]) { currentRank = ranksOrder[i]; break; }
             }
             return { rank: currentRank, total: absRP };
         }
@@ -100,43 +125,75 @@
             const globalIndicator = document.getElementById('globalIndicator');
             const globalStatus = document.getElementById('globalStatus');
             
+            // Diagnostic Targets
+            const debugProxy = document.getElementById('debugProxy');
+            const debugTime = document.getElementById('debugTime');
+            const debugResult = document.getElementById('debugResult');
+
             globalIndicator.className = "live-indicator";
-            globalStatus.innerText = "Synchronizing team datasets...";
+            globalStatus.innerText = "Querying live servers...";
+            debugTime.innerText = new Date().toLocaleTimeString();
 
             let updatedScores = {};
-            let anyDataFetched = false;
+            let matchValidationPassed = false;
+            let loggedDetails = [];
 
             for (let member of SQUAD) {
-                try {
-                    const targetUrl = `https://api.apexlegendsstatus.com/bridge?version=5&platform=${member.platform}&uid=${member.uid}&auth=${API_KEY}`;
-                    // Switched to AllOrigins script engine, which runs unfiltered directly inside GitHub Pages
-                    const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
-                    const wrapper = await response.json();
-                    const data = JSON.parse(wrapper.contents);
+                let successForUser = false;
+                let attempts = 0;
 
-                    if (data && data.global && data.global.rank) {
-                        const score = parseInt(data.global.rank.rankScore);
-                        updatedScores[member.uid] = !isNaN(score) ? score : 0;
-                        anyDataFetched = true;
-                    } else {
-                        throw new Error("Invalid structure");
+                // Attempt to reach the player's data using proxy shifting
+                while (!successForUser && attempts < PROXIES.length) {
+                    try {
+                        const targetUrl = `https://api.apexlegendsstatus.com/bridge?version=5&platform=${member.platform}&uid=${member.uid}&auth=${API_KEY}`;
+                        const activeProxyConfig = PROXIES[(currentProxyIndex + attempts) % PROXIES.length];
+                        
+                        debugProxy.innerText = `Engine ${((currentProxyIndex + attempts) % PROXIES.length) + 1} / ${PROXIES.length}`;
+
+                        const response = await fetch(activeProxyConfig(targetUrl));
+                        if (!response.ok) throw new Error("Network HTTP rejected");
+
+                        let rawData = await response.json();
+                        // Handle unformatted text wrappers from engines like AllOrigins
+                        if (rawData.contents) rawData = JSON.parse(rawData.contents);
+
+                        if (rawData && rawData.global && rawData.global.rank) {
+                            const score = parseInt(rawData.global.rank.rankScore);
+                            updatedScores[member.uid] = !isNaN(score) ? score : 0;
+                            successForUser = true;
+                            matchValidationPassed = true;
+                            loggedDetails.push(`${member.name}: ${score} RP`);
+                        } else {
+                            throw new Error("Empty body layout response");
+                        }
+                    } catch (e) {
+                        attempts++;
+                        console.warn(`Proxy shift triggered for user ${member.name}. Error:`, e.message);
                     }
-                } catch (e) {
-                    console.error(`Error reading ${member.name}:`, e);
-                    // Roll over previous history cache element if fallback occurs
+                }
+
+                if (!successForUser) {
                     const lastRecord = teamHistory[teamHistory.length - 1];
                     updatedScores[member.uid] = lastRecord && lastRecord.scores[member.uid] ? lastRecord.scores[member.uid] : 0;
+                    loggedDetails.push(`${member.name}: Loaded from Cache`);
                 }
-                // Stagger requests slightly to keep APIs running cleanly
-                await delay(1000);
+                await delay(1200);
             }
 
-            if (!anyDataFetched && teamHistory.length === 0) {
-                globalStatus.innerText = "API Rate Limit hit or profiles private. Retrying shortly...";
+            // Cycle base proxy pointer index to vary origin traffic on subsequent cycles
+            currentProxyIndex = (currentProxyIndex + 1) % PROXIES.length;
+
+            if (!matchValidationPassed) {
+                debugResult.className = "status-fail";
+                debugResult.innerText = "Blocked by API Firewall. Shifting server tunnels for next loop...";
+                globalStatus.innerText = "Sync delayed. Check diagnostics below.";
                 return;
             }
 
-            // Detect score shifts across the team to add a new timeline node
+            debugResult.className = "status-success";
+            debugResult.innerText = `Verified payload parsed successfully! (${loggedDetails.join(', ')})`;
+
+            // Identify changes to build graph history lines
             let changeDetected = teamHistory.length === 0;
             if (!changeDetected) {
                 const lastRecord = teamHistory[teamHistory.length - 1];
@@ -153,10 +210,10 @@
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     scores: updatedScores
                 });
-                localStorage.setItem('apexGroupHistoryV2', JSON.stringify(teamHistory));
+                localStorage.setItem('apexGroupHistoryV3', JSON.stringify(teamHistory));
             }
 
-            // Re-render UI Elements
+            // Draw HTML elements
             statusBox.innerHTML = "";
             SQUAD.forEach(m => {
                 const currentScore = updatedScores[m.uid] || 0;
@@ -169,28 +226,22 @@
             });
 
             globalIndicator.className = "live-indicator live-active";
-            globalStatus.innerText = "Live Team Stream Active";
-
+            globalStatus.innerText = "Team Live Stream Connection Verified";
             renderGroupChart();
         }
 
         function renderGroupChart() {
             if (teamHistory.length === 0) return;
-
             const labels = teamHistory.map((t, i) => i === 0 ? "Start" : `${t.timestamp}`);
-            
-            const datasets = SQUAD.map(member => {
-                return {
-                    label: member.name,
-                    data: teamHistory.map(h => h.scores[member.uid] || 0),
-                    borderColor: member.color,
-                    backgroundColor: 'transparent',
-                    tension: 0.2,
-                    pointRadius: 5,
-                    hoverPointRadius: 8,
-                    borderWidth: 3
-                };
-            });
+            const datasets = SQUAD.map(member => ({
+                label: member.name,
+                data: teamHistory.map(h => h.scores[member.uid] || 0),
+                borderColor: member.color,
+                backgroundColor: 'transparent',
+                tension: 0.2,
+                pointRadius: 5,
+                borderWidth: 3
+            }));
 
             let allPoints = [];
             teamHistory.forEach(h => {
@@ -200,43 +251,26 @@
             const maxVal = Math.max(...allPoints, 2000);
             const minVal = Math.min(...allPoints, 0);
 
-            // Give padding so the lines don't hug the edge of the canvas
-            const yMax = maxVal + 500;
-            const yMin = Math.max(0, minVal - 500);
-
             if (eloChart) eloChart.destroy();
 
             eloChart = new Chart(document.getElementById('eloChart'), {
                 type: 'line',
                 data: { labels: labels, datasets: datasets },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     scales: {
                         y: {
-                            min: yMin,
-                            max: yMax,
-                            ticks: { 
-                                color: '#aaa',
-                                font: { family: 'Segoe UI' }
-                            },
-                            grid: { color: '#252525' }
+                            min: Math.max(0, minVal - 300), max: maxVal + 300,
+                            ticks: { color: '#aaa' }, grid: { color: '#252525' }
                         },
-                        x: { 
-                            ticks: { color: '#aaa' }, 
-                            grid: { display: false } 
-                        }
+                        x: { ticks: { color: '#aaa' }, grid: { display: false } }
                     },
                     plugins: {
-                        legend: { display: true, labels: { color: '#fff', font: { size: 13 } } },
+                        legend: { labels: { color: '#fff' } },
                         tooltip: {
-                            mode: 'index',
-                            intersect: false,
+                            mode: 'index', intersect: false,
                             callbacks: {
-                                label: (ctx) => {
-                                    const info = getDisplayInfo(ctx.raw);
-                                    return ` ${ctx.dataset.label}: ${info.rank} (${info.total} RP)`;
-                                }
+                                label: (ctx) => ` ${ctx.dataset.label}: ${getDisplayInfo(ctx.raw).rank} (${ctx.raw} RP)`
                             }
                         }
                     }
@@ -244,13 +278,14 @@
             });
         }
 
-        // Run updates
+        // Loop Triggers
         fetchSquadStats();
-        setInterval(fetchSquadStats, 60000); // Polls updates once a minute safely
+        setInterval(fetchSquadStats, 60000);
 
+        document.getElementById('forceCheckBtn').addEventListener('click', fetchSquadStats);
         document.getElementById('clearData').addEventListener('click', () => {
-            if (confirm("Wipe tracking history memory cache?")) {
-                localStorage.removeItem('apexGroupHistoryV2');
+            if (confirm("Wipe cache?")) {
+                localStorage.removeItem('apexGroupHistoryV3');
                 teamHistory = [];
                 fetchSquadStats();
             }
