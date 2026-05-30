@@ -62,7 +62,7 @@
 
     <div class="container">
         <div class="header-row">
-            <div class="status-text"><span id="globalIndicator" class="live-indicator"></span> <span id="globalStatus">Initializing UID Engine...</span></div>
+            <div class="status-text"><span id="globalIndicator" class="live-indicator"></span> <span id="globalStatus">Initializing Engine...</span></div>
             <div class="btn-group">
                 <button type="button" id="forceCheckBtn" style="background: #2a2a2a; color:#fff;">Scan Now</button>
                 <button type="button" id="clearData">Reset History</button>
@@ -70,7 +70,7 @@
         </div>
         
         <div class="debug-panel">
-            <div class="debug-line"><span>Pipeline Engine:</span> <span id="debugProxy" class="status-success">Direct UID Script Stream (No Names)</span></div>
+            <div class="debug-line"><span>Pipeline Tunnel:</span> <span id="debugProxy" class="status-success">Secure CORS-Proxy Stream</span></div>
             <div class="debug-line"><span>Last API Attempt:</span> <span id="debugTime">Never</span></div>
             <div class="debug-line"><span>Response Validation:</span> <span id="debugResult">-</span></div>
         </div>
@@ -83,10 +83,10 @@
     </div>
 
     <script>
-        // ====================================================================
-        // 1. INPUT PLATFORM-SPECIFIC UIDS HERE
-        // Platforms: "PC" (Origin/Steam), "PS4" (PlayStation), "X1" (Xbox)
-        // ====================================================================
+        // ==========================================
+        // CONFIGURATION: VERIFY SYSTEM PLATFORMS HERE
+        // Platforms: "PC", "PS4", "X1", "SWITCH"
+        // ==========================================
         const SQUAD = [
             { uid: "2292013299", label: "You", platform: "PC", color: "#da292a" },       
             { uid: "1111111111", label: "Friend One", platform: "PC", color: "#3498db" }, 
@@ -98,13 +98,9 @@
         const rankBases = { "Rookie": 0, "Bronze": 1000, "Silver": 3000, "Gold": 5400, "Platinum": 8200, "Diamond": 11400, "Master": 15000, "Predator": 15000 };
         const ranksOrder = ["Rookie", "Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Predator"];
 
-        let teamHistory = JSON.parse(localStorage.getItem('apexUidSquadV7')) || [];
+        let teamHistory = JSON.parse(localStorage.getItem('apexCorsSquadV8')) || [];
         let eloChart;
         
-        let currentMemberIndex = 0;
-        let runningBatchScores = {};
-        let successCountInBatch = 0;
-
         function getDisplayInfo(absRP) {
             if (!absRP || absRP < 0) absRP = 0;
             let currentRank = "Rookie";
@@ -114,99 +110,89 @@
             return { rank: currentRank, total: absRP };
         }
 
-        window.handleDirectApexStats = function(data) {
-            const currentMember = SQUAD[currentMemberIndex];
-            const debugResult = document.getElementById('debugResult');
+        const delay = ms => new Promise(res => setTimeout(res, ms));
 
-            if (data && data.global && data.global.rank) {
-                const score = parseInt(data.global.rank.rankScore);
-                if (!isNaN(score)) {
-                    runningBatchScores[currentMember.uid] = score;
-                    successCountInBatch++;
-                    debugResult.className = "status-success";
-                    debugResult.innerText = `Connected: Fetched UID data for ${currentMember.label} (${score} RP)`;
-                } else {
-                    useFallback(currentMember);
-                }
-            } else {
-                useFallback(currentMember);
-            }
-
-            currentMemberIndex++;
-            setTimeout(processNextSquadMember, 1500); 
-        };
-
-        function useFallback(member) {
-            const debugResult = document.getElementById('debugResult');
-            const lastRecord = teamHistory[teamHistory.length - 1];
-            
-            if (lastRecord && lastRecord.scores[member.uid]) {
-                runningBatchScores[member.uid] = lastRecord.scores[member.uid];
-            } else {
-                runningBatchScores[member.uid] = 0; 
-            }
-            debugResult.className = "status-warn";
-            debugResult.innerText = `UID ${member.uid} (${member.label}) returned no rank data. Verifying API Key...`;
-        }
-
-        function processNextSquadMember() {
-            const debugTime = document.getElementById('debugTime');
-            debugTime.innerText = new Date().toLocaleTimeString();
-
-            if (currentMemberIndex < SQUAD.length) {
-                const member = SQUAD[currentMemberIndex];
-                
-                const activeScript = document.getElementById('apexDirectNode');
-                if (activeScript) activeScript.remove();
-
-                // Using direct JSONP scripting natively targeting the verified UID parameter array
-                const directUrl = `https://api.apexlegendsstatus.com/bridge?version=5&platform=${member.platform}&uid=${member.uid}&auth=${API_KEY}&callback=handleDirectApexStats&_=${new Date().getTime()}`;
-
-                const script = document.createElement('script');
-                script.id = 'apexDirectNode';
-                script.src = directUrl;
-                
-                script.onerror = function() {
-                    const currentMember = SQUAD[currentMemberIndex];
-                    useFallback(currentMember);
-                    currentMemberIndex++;
-                    setTimeout(processNextSquadMember, 1500);
-                };
-
-                document.body.appendChild(script);
-            } else {
-                finalizeTimelineRecord();
-            }
-        }
-
-        function finalizeTimelineRecord() {
+        async function fetchSquadStats() {
             const globalIndicator = document.getElementById('globalIndicator');
             const globalStatus = document.getElementById('globalStatus');
             const statusBox = document.getElementById('rosterStatus');
+            const debugTime = document.getElementById('debugTime');
             const debugResult = document.getElementById('debugResult');
 
+            globalIndicator.className = "live-indicator";
+            globalStatus.innerText = "Querying live servers...";
+            debugTime.innerText = new Date().toLocaleTimeString();
+
+            let updatedScores = {};
+            let successCount = 0;
+            let logs = [];
+
+            // Load values from history as baseline fallback values
+            const lastRecord = teamHistory[teamHistory.length - 1];
+            SQUAD.forEach(m => {
+                updatedScores[m.uid] = (lastRecord && lastRecord.scores[m.uid]) ? lastRecord.scores[m.uid] : 0;
+            });
+
+            for (let member of SQUAD) {
+                try {
+                    const targetUrl = `https://api.apexlegendsstatus.com/bridge?version=5&platform=${member.platform}&uid=${member.uid}&auth=${API_KEY}`;
+                    
+                    // Unblocked high-availability CORS gateway pipeline layout wrapper
+                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+                    const response = await fetch(proxyUrl);
+                    if (!response.ok) throw new Error(`HTTP status code error: ${response.status}`);
+
+                    const data = await response.json();
+
+                    if (data && data.global && data.global.rank) {
+                        const score = parseInt(data.global.rank.rankScore);
+                        if (!isNaN(score)) {
+                            updatedScores[member.uid] = score;
+                            successCount++;
+                            logs.push(`${member.label}: ${score} RP`);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Failed to load data for ${member.label}:`, e.message);
+                }
+                // Spacing interval between individual requests to completely avoid rate limits
+                await delay(1200); 
+            }
+
+            if (successCount === 0) {
+                debugResult.className = "status-fail";
+                debugResult.innerText = "Connection failed. Verify your unique API Key is active.";
+                globalStatus.innerText = "Network sync failed.";
+                return;
+            }
+
+            debugResult.className = "status-success";
+            debugResult.innerText = `Verified payload updated successfully! (${logs.join(', ')})`;
+
+            // Identify changes to build graph history lines
             let changeDetected = teamHistory.length === 0;
             if (!changeDetected) {
-                const lastRecord = teamHistory[teamHistory.length - 1];
                 for (let member of SQUAD) {
-                    if (runningBatchScores[member.uid] !== lastRecord.scores[member.uid]) {
+                    if (updatedScores[member.uid] !== lastRecord.scores[member.uid]) {
                         changeDetected = true;
                         break;
                     }
                 }
             }
 
-            if (changeDetected && successCountInBatch > 0) {
+            if (changeDetected) {
                 teamHistory.push({
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    scores: { ...runningBatchScores }
+                    scores: { ...updatedScores }
                 });
-                localStorage.setItem('apexUidSquadV7', JSON.stringify(teamHistory));
+                localStorage.setItem('apexCorsSquadV8', JSON.stringify(teamHistory));
             }
 
+            // Repopulate Badge elements
             statusBox.innerHTML = "";
             SQUAD.forEach(m => {
-                const currentScore = runningBatchScores[m.uid] || 0;
+                const currentScore = updatedScores[m.uid] || 0;
                 const info = getDisplayInfo(currentScore);
                 const badge = document.createElement('div');
                 badge.className = 'player-badge';
@@ -216,22 +202,8 @@
             });
 
             globalIndicator.className = "live-indicator live-active";
-            globalStatus.innerText = "Direct UID Tracking Engine Active";
-            
-            if (successCountInBatch === 0) {
-                debugResult.className = "status-fail";
-                debugResult.innerText = "Sync completed but all UIDs returned 0. See how to verify your real hardware UIDs below.";
-            }
-
+            globalStatus.innerText = "Team Live Stream Connection Verified";
             renderGroupChart();
-        }
-
-        function triggerSquadUpdateLoop() {
-            currentMemberIndex = 0;
-            successCountInBatch = 0;
-            const lastRecord = teamHistory[teamHistory.length - 1];
-            runningBatchScores = lastRecord ? { ...lastRecord.scores } : {};
-            processNextSquadMember();
         }
 
         function renderGroupChart() {
@@ -239,60 +211,4 @@
             const labels = teamHistory.map((t, i) => i === 0 ? "Start" : `${t.timestamp}`);
             const datasets = SQUAD.map(member => ({
                 label: member.label,
-                data: teamHistory.map(h => h.scores[member.uid] || 0),
-                borderColor: member.color,
-                backgroundColor: 'transparent',
-                tension: 0.2,
-                pointRadius: 5,
-                borderWidth: 3
-            }));
-
-            let allPoints = [];
-            teamHistory.forEach(h => {
-                Object.values(h.scores).forEach(v => { if (v > 0) allPoints.push(v); });
-            });
-
-            const maxVal = Math.max(...allPoints, 2000);
-            const minVal = Math.min(...allPoints, 0);
-
-            if (eloChart) eloChart.destroy();
-
-            eloChart = new Chart(document.getElementById('eloChart'), {
-                type: 'line',
-                data: { labels: labels, datasets: datasets },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            min: Math.max(0, minVal - 300), max: maxVal + 500,
-                            ticks: { color: '#aaa' }, grid: { color: '#252525' }
-                        },
-                        x: { ticks: { color: '#aaa' }, grid: { display: false } }
-                    },
-                    plugins: {
-                        legend: { labels: { color: '#fff' } },
-                        tooltip: {
-                            mode: 'index', intersect: false,
-                            callbacks: {
-                                label: (ctx) => ` ${ctx.dataset.label}: ${getDisplayInfo(ctx.raw).rank} (${ctx.raw} RP)`
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        triggerSquadUpdateLoop();
-        setInterval(triggerSquadUpdateLoop, 60000); 
-
-        document.getElementById('forceCheckBtn').addEventListener('click', triggerSquadUpdateLoop);
-        document.getElementById('clearData').addEventListener('click', () => {
-            if (confirm("Wipe tracking graph history memory?")) {
-                localStorage.removeItem('apexUidSquadV7');
-                teamHistory = [];
-                triggerSquadUpdateLoop();
-            }
-        });
-    </script>
-</body>
-</html>
+                data:
