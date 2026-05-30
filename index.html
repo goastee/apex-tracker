@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Apex Squad Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <style>
+        body { background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        .chart-container { width: 90vw; height: 70vh; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Live Squad Performance</h1>
+    <div class="chart-container">
+        <canvas id="myChart"></canvas>
+    </div>
+    
+    <script>
+        async function render() {
+            const res = await fetch('history.json?nocache=' + Date.now());
+            const history = await res.json();
+            
+            const labels = history.map(h => h.timestamp);
+            const datasets = Object.keys(history[0].scores).map((uid, index) => ({
+                label: `Player ${uid}`,
+                data: history.map(h => h.scores[uid]),
+                borderColor: index === 0 ? '#da292a' : '#3498db',
+                tension: 0.2
+            }));
+
+            new Chart(document.getElementById('myChart'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        zoom: {
+                            zoom: {
+                                wheel: { enabled: true }, // Scroll to zoom
+                                pinch: { enabled: true },
+                                mode: 'xy',
+                            },
+                            pan: {
+                                enabled: true, // Click and drag to scroll
+                                mode: 'xy'
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { ticks: { color: '#aaa' }, grid: { color: '#252525' } },
+                        x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
+                    }
+                }
+            });
+        }
+        render();
+        setInterval(render, 60000); 
+    </script>
+</body>
+</html>
