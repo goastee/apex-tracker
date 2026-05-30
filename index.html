@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Apex Squad Tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <style>
         body { background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
@@ -28,28 +29,38 @@
             const res = await fetch('history.json?nocache=' + Date.now());
             const history = await res.json();
             
-            // Collect all unique UIDs from every record
+            // Get all unique UIDs ever recorded
             const allUIDs = [...new Set(history.flatMap(h => Object.keys(h.scores)))];
+            const labels = history.map(h => h.timestamp);
             
             const datasets = allUIDs.map((uid, index) => ({
                 label: NAME_MAP[uid] || `Player ${uid}`,
-                data: history.map(h => h.scores[uid] || 0),
+                // If a player is missing from a specific timestamp, return null (skips drawing a 0)
+                data: history.map(h => h.scores[uid] !== undefined ? h.scores[uid] : null),
                 borderColor: ['#da292a', '#3498db', '#2ecc71', '#f1c40f'][index % 4],
-                tension: 0.2
+                tension: 0, // Forces perfectly straight lines (no curves)
+                spanGaps: true, // Connects the straight lines over missing data gaps
+                borderWidth: 2
             }));
 
             new Chart(document.getElementById('myChart'), {
                 type: 'line',
-                data: { labels: history.map(h => h.timestamp), datasets },
+                data: { labels, datasets },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     plugins: {
                         zoom: {
-                            pan: { enabled: true, mode: 'xy' },
+                            pan: { 
+                                enabled: true, 
+                                mode: 'xy',
+                                threshold: 2 // Lowers the resistance needed to start dragging
+                            },
                             zoom: {
                                 wheel: { enabled: true },
+                                pinch: { enabled: true },
                                 mode: 'xy',
                                 onZoom: function({chart}) {
+                                    // Lock X-axis if zoomed in too far
                                     const range = chart.scales.x.max - chart.scales.x.min;
                                     chart.options.plugins.zoom.zoom.mode = (range < 4) ? 'y' : 'xy';
                                 }
@@ -57,8 +68,15 @@
                         }
                     },
                     scales: {
-                        y: { min: 0, beginAtZero: true, ticks: { color: '#aaa' }, grid: { color: '#252525' } },
-                        x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
+                        y: { 
+                            min: 0, // Hard-locks the bottom to 0
+                            ticks: { color: '#aaa' }, 
+                            grid: { color: '#252525' } 
+                        },
+                        x: { 
+                            ticks: { color: '#aaa' }, 
+                            grid: { color: '#252525' } 
+                        }
                     }
                 }
             });
