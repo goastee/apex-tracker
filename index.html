@@ -8,7 +8,6 @@
     <style>
         body { background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
         .chart-container { width: 90vw; height: 70vh; margin-top: 20px; cursor: grab; }
-        .chart-container:active { cursor: grabbing; }
     </style>
 </head>
 <body>
@@ -20,7 +19,8 @@
     <script>
         const NAME_MAP = {
             "2292013299": "Luci",
-            "1011944913282": "Saywhat"
+            "1011944913282": "Saywhat",
+            "1012860147038": "Talon"
         };
 
         async function render() {
@@ -31,7 +31,7 @@
             const datasets = Object.keys(history[0].scores).map((uid, index) => ({
                 label: NAME_MAP[uid] || `Player ${uid}`,
                 data: history.map(h => h.scores[uid]),
-                borderColor: index === 0 ? '#da292a' : '#3498db',
+                borderColor: ['#da292a', '#3498db', '#2ecc71'][index % 3],
                 tension: 0.2
             }));
 
@@ -39,8 +39,7 @@
                 type: 'line',
                 data: { labels, datasets },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     plugins: {
                         zoom: {
                             pan: { enabled: true, mode: 'xy' },
@@ -55,12 +54,7 @@
                         }
                     },
                     scales: {
-                        y: { 
-                            min: 0,
-                            beginAtZero: true,
-                            ticks: { color: '#aaa', beginAtZero: true }, 
-                            grid: { color: '#252525' } 
-                        },
+                        y: { min: 0, ticks: { color: '#aaa' }, grid: { color: '#252525' } },
                         x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
                     }
                 }
