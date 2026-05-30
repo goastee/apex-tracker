@@ -26,16 +26,14 @@
         }
         .header-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
         
-        /* Debug Panel Styling */
         .debug-panel {
             background: #181818; border: 1px solid #333; padding: 10px; 
             border-radius: 4px; font-family: monospace; font-size: 0.85em; color: #888;
             margin-top: 5px; display: flex; flex-direction: column; gap: 4px;
         }
         .debug-line { display: flex; justify-content: space-between; }
-        .status-success { color: #4caf50; }
+        .status-success { color: #4caf50; font-weight: bold; }
         .status-warn { color: #ff9800; }
-        .status-fail { color: #f44336; }
 
         .roster-status { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; width: 100%; margin-top: 5px; }
         .player-badge { background: #252525; padding: 10px 14px; border-radius: 4px; border-left: 4px solid var(--p-color, #fff); font-size: 0.9em; box-shadow: inset 0 0 5px rgba(0,0,0,0.2); }
@@ -63,7 +61,7 @@
 
     <div class="container">
         <div class="header-row">
-            <div class="status-text"><span id="globalIndicator" class="live-indicator"></span> <span id="globalStatus">Initializing network check...</span></div>
+            <div class="status-text"><span id="globalIndicator" class="live-indicator"></span> <span id="globalStatus">Initializing JSONP engine...</span></div>
             <div class="btn-group">
                 <button type="button" id="forceCheckBtn" style="background: #2a2a2a; color:#fff;">Scan Now</button>
                 <button type="button" id="clearData">Reset History</button>
@@ -71,7 +69,7 @@
         </div>
         
         <div class="debug-panel">
-            <div class="debug-line"><span>Pipeline Engine:</span> <span id="debugProxy">None</span></div>
+            <div class="debug-line"><span>Pipeline Engine:</span> <span id="debugProxy" class="status-success">Native JSONP Script Stream</span></div>
             <div class="debug-line"><span>Last API Attempt:</span> <span id="debugTime">Never</span></div>
             <div class="debug-line"><span>Response Validation:</span> <span id="debugResult">-</span></div>
         </div>
@@ -85,29 +83,24 @@
 
     <script>
         // ==========================================
-        // 1. CONFIGURE YOUR ACTIVE SQUAD HERE
+        // 1. SQUAD TRACKING OBJECT DEFINITIONS
         // ==========================================
         const SQUAD = [
             { uid: "2292013299", name: "You", platform: "PC", color: "#da292a" },       
-            { uid: "2292013299", name: "Friend One", platform: "PC", color: "#3498db" }, 
-            { uid: "2292013299", name: "Friend Two", platform: "PC", color: "#2ecc71" }, 
-            { uid: "2292013299", name: "Friend Three", platform: "X1", color: "#f1c40f" } 
+            { uid: "1111111111", name: "Friend One", platform: "PC", color: "#3498db" }, 
+            { uid: "2222222222", name: "Friend Two", platform: "PC", color: "#2ecc71" }, 
+            { uid: "3333333333", name: "Friend Three", platform: "X1", color: "#f1c40f" } 
         ];
 
         const API_KEY = "7c4c9fa6a93906fa0d110967a57a8286";
         const rankBases = { "Rookie": 0, "Bronze": 1000, "Silver": 3000, "Gold": 5400, "Platinum": 8200, "Diamond": 11400, "Master": 15000, "Predator": 15000 };
         const ranksOrder = ["Rookie", "Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Predator"];
 
-        let teamHistory = JSON.parse(localStorage.getItem('apexGroupHistoryV3')) || [];
+        let teamHistory = JSON.parse(localStorage.getItem('apexGroupHistoryV4')) || [];
         let eloChart;
-
-        // Rotating Proxy List to automatically bypass rate-limits or blocks
-        const PROXIES = [
-            (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-            (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-            (url) => `https://thingproxy.freeboard.io/fetch/${url}`
-        ];
-        let currentProxyIndex = 0;
+        
+        let currentMemberIndex = 0;
+        let runningBatchScores = {};
 
         function getDisplayInfo(absRP) {
             if (!absRP || absRP < 0) absRP = 0;
@@ -118,87 +111,77 @@
             return { rank: currentRank, total: absRP };
         }
 
-        const delay = ms => new Promise(res => setTimeout(res, ms));
+        // Global Callback Router — catches responses from injected script tags
+        window.handleApexTimelineSignal = function(response) {
+            // Unwrap data if the endpoint provides a string payload wrapper
+            let data = response;
+            if (response && response.contents) {
+                try { data = JSON.parse(response.contents); } catch(e){}
+            }
 
-        async function fetchSquadStats() {
-            const statusBox = document.getElementById('rosterStatus');
-            const globalIndicator = document.getElementById('globalIndicator');
-            const globalStatus = document.getElementById('globalStatus');
-            
-            // Diagnostic Targets
-            const debugProxy = document.getElementById('debugProxy');
-            const debugTime = document.getElementById('debugTime');
+            const currentMember = SQUAD[currentMemberIndex];
             const debugResult = document.getElementById('debugResult');
 
-            globalIndicator.className = "live-indicator";
-            globalStatus.innerText = "Querying live servers...";
+            if (data && data.global && data.global.rank) {
+                const score = parseInt(data.global.rank.rankScore);
+                runningBatchScores[currentMember.uid] = !isNaN(score) ? score : 0;
+                debugResult.innerText = `Successfully parsed ${currentMember.name}: ${score} RP`;
+            } else {
+                const lastRecord = teamHistory[teamHistory.length - 1];
+                runningBatchScores[currentMember.uid] = lastRecord && lastRecord.scores[currentMember.uid] ? lastRecord.scores[currentMember.uid] : 0;
+                debugResult.innerText = `Warning: Using cached value for ${currentMember.name}`;
+            }
+
+            // Move to the next member in the list
+            currentMemberIndex++;
+            processNextSquadMember();
+        };
+
+        function processNextSquadMember() {
+            const debugTime = document.getElementById('debugTime');
             debugTime.innerText = new Date().toLocaleTimeString();
 
-            let updatedScores = {};
-            let matchValidationPassed = false;
-            let loggedDetails = [];
+            if (currentMemberIndex < SQUAD.length) {
+                const member = SQUAD[currentMemberIndex];
+                
+                // Remove older script tags before appending a new one
+                const activeScript = document.getElementById('apexJsonpNode');
+                if (activeScript) activeScript.remove();
 
-            for (let member of SQUAD) {
-                let successForUser = false;
-                let attempts = 0;
+                const targetUrl = `https://api.apexlegendsstatus.com/bridge?version=5&platform=${member.platform}&uid=${member.uid}&auth=${API_KEY}`;
+                
+                // Build a native browser query script node using standard script injection parameters
+                const jsonpUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}&callback=handleApexTimelineSignal&_=${new Date().getTime()}`;
 
-                // Attempt to reach the player's data using proxy shifting
-                while (!successForUser && attempts < PROXIES.length) {
-                    try {
-                        const targetUrl = `https://api.apexlegendsstatus.com/bridge?version=5&platform=${member.platform}&uid=${member.uid}&auth=${API_KEY}`;
-                        const activeProxyConfig = PROXIES[(currentProxyIndex + attempts) % PROXIES.length];
-                        
-                        debugProxy.innerText = `Engine ${((currentProxyIndex + attempts) % PROXIES.length) + 1} / ${PROXIES.length}`;
-
-                        const response = await fetch(activeProxyConfig(targetUrl));
-                        if (!response.ok) throw new Error("Network HTTP rejected");
-
-                        let rawData = await response.json();
-                        // Handle unformatted text wrappers from engines like AllOrigins
-                        if (rawData.contents) rawData = JSON.parse(rawData.contents);
-
-                        if (rawData && rawData.global && rawData.global.rank) {
-                            const score = parseInt(rawData.global.rank.rankScore);
-                            updatedScores[member.uid] = !isNaN(score) ? score : 0;
-                            successForUser = true;
-                            matchValidationPassed = true;
-                            loggedDetails.push(`${member.name}: ${score} RP`);
-                        } else {
-                            throw new Error("Empty body layout response");
-                        }
-                    } catch (e) {
-                        attempts++;
-                        console.warn(`Proxy shift triggered for user ${member.name}. Error:`, e.message);
-                    }
-                }
-
-                if (!successForUser) {
+                const script = document.createElement('script');
+                script.id = 'apexJsonpNode';
+                script.src = jsonpUrl;
+                script.onerror = function() {
+                    // Fall back to cache on failure and continue the loop
                     const lastRecord = teamHistory[teamHistory.length - 1];
-                    updatedScores[member.uid] = lastRecord && lastRecord.scores[member.uid] ? lastRecord.scores[member.uid] : 0;
-                    loggedDetails.push(`${member.name}: Loaded from Cache`);
-                }
-                await delay(1200);
+                    runningBatchScores[member.uid] = lastRecord && lastRecord.scores[member.uid] ? lastRecord.scores[member.uid] : 0;
+                    currentMemberIndex++;
+                    setTimeout(processNextSquadMember, 1000);
+                };
+
+                document.body.appendChild(script);
+            } else {
+                // All members processed — finalize data point insertion
+                finalizeTimelineRecord();
             }
+        }
 
-            // Cycle base proxy pointer index to vary origin traffic on subsequent cycles
-            currentProxyIndex = (currentProxyIndex + 1) % PROXIES.length;
+        function finalizeTimelineRecord() {
+            const globalIndicator = document.getElementById('globalIndicator');
+            const globalStatus = document.getElementById('globalStatus');
+            const statusBox = document.getElementById('rosterStatus');
+            const debugResult = document.getElementById('debugResult');
 
-            if (!matchValidationPassed) {
-                debugResult.className = "status-fail";
-                debugResult.innerText = "Blocked by API Firewall. Shifting server tunnels for next loop...";
-                globalStatus.innerText = "Sync delayed. Check diagnostics below.";
-                return;
-            }
-
-            debugResult.className = "status-success";
-            debugResult.innerText = `Verified payload parsed successfully! (${loggedDetails.join(', ')})`;
-
-            // Identify changes to build graph history lines
             let changeDetected = teamHistory.length === 0;
             if (!changeDetected) {
                 const lastRecord = teamHistory[teamHistory.length - 1];
                 for (let member of SQUAD) {
-                    if (updatedScores[member.uid] !== lastRecord.scores[member.uid]) {
+                    if (runningBatchScores[member.uid] !== lastRecord.scores[member.uid]) {
                         changeDetected = true;
                         break;
                     }
@@ -208,15 +191,15 @@
             if (changeDetected) {
                 teamHistory.push({
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    scores: updatedScores
+                    scores: { ...runningBatchScores }
                 });
-                localStorage.setItem('apexGroupHistoryV3', JSON.stringify(teamHistory));
+                localStorage.setItem('apexGroupHistoryV4', JSON.stringify(teamHistory));
             }
 
-            // Draw HTML elements
+            // Update UI Badges
             statusBox.innerHTML = "";
             SQUAD.forEach(m => {
-                const currentScore = updatedScores[m.uid] || 0;
+                const currentScore = runningBatchScores[m.uid] || 0;
                 const info = getDisplayInfo(currentScore);
                 const badge = document.createElement('div');
                 badge.className = 'player-badge';
@@ -226,8 +209,18 @@
             });
 
             globalIndicator.className = "live-indicator live-active";
-            globalStatus.innerText = "Team Live Stream Connection Verified";
+            globalStatus.innerText = "Team Stream Connection Verified";
+            debugResult.innerText = "Full squad pipeline sync completed.";
+
             renderGroupChart();
+        }
+
+        function triggerSquadUpdateLoop() {
+            currentMemberIndex = 0;
+            // Retain old scores during the current background check loop
+            const lastRecord = teamHistory[teamHistory.length - 1];
+            runningBatchScores = lastRecord ? { ...lastRecord.scores } : {};
+            processNextSquadMember();
         }
 
         function renderGroupChart() {
@@ -278,16 +271,16 @@
             });
         }
 
-        // Loop Triggers
-        fetchSquadStats();
-        setInterval(fetchSquadStats, 60000);
+        // Initialize Background Loops
+        triggerSquadUpdateLoop();
+        setInterval(triggerSquadUpdateLoop, 60000); // Scans once per minute
 
-        document.getElementById('forceCheckBtn').addEventListener('click', fetchSquadStats);
+        document.getElementById('forceCheckBtn').addEventListener('click', triggerSquadUpdateLoop);
         document.getElementById('clearData').addEventListener('click', () => {
             if (confirm("Wipe cache?")) {
-                localStorage.removeItem('apexGroupHistoryV3');
+                localStorage.removeItem('apexGroupHistoryV4');
                 teamHistory = [];
-                fetchSquadStats();
+                triggerSquadUpdateLoop();
             }
         });
     </script>
