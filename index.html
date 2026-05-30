@@ -6,14 +6,31 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    
     <style>
-        body { background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
-        .chart-container { width: 90vw; height: 70vh; margin-top: 20px; cursor: grab; }
+        body { 
+            background: #121212; color: white; font-family: sans-serif; 
+            display: flex; flex-direction: column; align-items: center; 
+        }
+        .header-container {
+            display: flex; align-items: center; gap: 20px;
+        }
+        button {
+            background-color: #3498db; color: white; border: none; 
+            padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;
+        }
+        button:hover { background-color: #2980b9; }
+        .chart-container { width: 90vw; height: 70vh; margin-top: 10px; cursor: grab; }
         .chart-container:active { cursor: grabbing; }
     </style>
 </head>
 <body>
-    <h1>Squad Live Performance</h1>
+    <div class="header-container">
+        <h1>Squad Live Performance</h1>
+        <button onclick="if(window.apexChart) window.apexChart.resetZoom()">Reset Zoom</button>
+    </div>
+    
     <div class="chart-container">
         <canvas id="myChart"></canvas>
     </div>
@@ -24,9 +41,40 @@
             "1011944913282": "Saywhat",
             "1012860147038": "Talon",
             "1011877813719": "Anubis",
-            "2433485727": "trevor",        // Added trevor
-            "1004525474326": "mamapunk"    // Added mamapunk
+            "2433485727": "trevor",        
+            "1004525474326": "mamapunk"    
         };
+
+        // Edit these numbers if Apex changes the RP required for ranks
+        const RANK_THRESHOLDS = {
+            "Bronze": { rp: 1000, color: '#cd7f32' },
+            "Silver": { rp: 3000, color: '#bdc3c7' },
+            "Gold": { rp: 5400, color: '#f1c40f' },
+            "Platinum": { rp: 8200, color: '#1abc9c' },
+            "Diamond": { rp: 11400, color: '#3498db' },
+            "Master": { rp: 15000, color: '#9b59b6' }
+        };
+
+        // Dynamically build the horizontal lines based on the thresholds above
+        const rankAnnotations = {};
+        Object.keys(RANK_THRESHOLDS).forEach(rank => {
+            rankAnnotations[rank] = {
+                type: 'line',
+                yMin: RANK_THRESHOLDS[rank].rp,
+                yMax: RANK_THRESHOLDS[rank].rp,
+                borderColor: RANK_THRESHOLDS[rank].color,
+                borderWidth: 1,
+                borderDash: [5, 5], // Makes the line dotted
+                label: {
+                    display: true,
+                    content: rank,
+                    position: 'start',
+                    backgroundColor: 'rgba(18, 18, 18, 0.8)',
+                    color: RANK_THRESHOLDS[rank].color,
+                    font: { size: 12, weight: 'bold' }
+                }
+            };
+        });
 
         async function render() {
             const res = await fetch('history.json?nocache=' + Date.now());
@@ -38,18 +86,25 @@
             const datasets = allUIDs.map((uid, index) => ({
                 label: NAME_MAP[uid] || `Player ${uid}`,
                 data: history.map(h => h.scores[uid] !== undefined ? h.scores[uid] : null),
-                // Expanded to 7 colors to accommodate the growing squad
                 borderColor: ['#da292a', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c'][index % 7],
                 tension: 0,
                 borderWidth: 2
             }));
 
-            new Chart(document.getElementById('myChart'), {
+            // Destroy the old chart if it exists so it doesn't glitch when auto-refreshing
+            if (window.apexChart) {
+                window.apexChart.destroy();
+            }
+
+            window.apexChart = new Chart(document.getElementById('myChart'), {
                 type: 'line',
                 data: { labels, datasets },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     plugins: {
+                        annotation: {
+                            annotations: rankAnnotations
+                        },
                         zoom: {
                             pan: { 
                                 enabled: true, 
@@ -59,11 +114,8 @@
                             zoom: {
                                 wheel: { enabled: true },
                                 pinch: { enabled: true },
-                                mode: 'xy',
-                                onZoom: function({chart}) {
-                                    const range = chart.scales.x.max - chart.scales.x.min;
-                                    chart.options.plugins.zoom.zoom.mode = (range < 4) ? 'y' : 'xy';
-                                }
+                                mode: 'xy'
+                                // The buggy lock-out logic has been deleted entirely!
                             }
                         }
                     },
@@ -81,7 +133,9 @@
                 }
             });
         }
+        
         render();
+        // Auto-refresh data every 60 seconds
         setInterval(render, 60000); 
     </script>
 </body>
