@@ -22,24 +22,25 @@
         const NAME_MAP = {
             "2292013299": "Luci",
             "1011944913282": "Saywhat",
-            "1012860147038": "Talon"
+            "1012860147038": "Talon",
+            "1011877813719": "Anubis",
+            "2433485727": "trevor",        // Added trevor
+            "1004525474326": "mamapunk"    // Added mamapunk
         };
 
         async function render() {
             const res = await fetch('history.json?nocache=' + Date.now());
             const history = await res.json();
             
-            // Get all unique UIDs ever recorded
             const allUIDs = [...new Set(history.flatMap(h => Object.keys(h.scores)))];
             const labels = history.map(h => h.timestamp);
             
             const datasets = allUIDs.map((uid, index) => ({
                 label: NAME_MAP[uid] || `Player ${uid}`,
-                // If a player is missing from a specific timestamp, return null (skips drawing a 0)
                 data: history.map(h => h.scores[uid] !== undefined ? h.scores[uid] : null),
-                borderColor: ['#da292a', '#3498db', '#2ecc71', '#f1c40f'][index % 4],
-                tension: 0, // Forces perfectly straight lines (no curves)
-                spanGaps: true, // Connects the straight lines over missing data gaps
+                // Expanded to 7 colors to accommodate the growing squad
+                borderColor: ['#da292a', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c'][index % 7],
+                tension: 0,
                 borderWidth: 2
             }));
 
@@ -53,14 +54,13 @@
                             pan: { 
                                 enabled: true, 
                                 mode: 'xy',
-                                threshold: 2 // Lowers the resistance needed to start dragging
+                                threshold: 2 
                             },
                             zoom: {
                                 wheel: { enabled: true },
                                 pinch: { enabled: true },
                                 mode: 'xy',
                                 onZoom: function({chart}) {
-                                    // Lock X-axis if zoomed in too far
                                     const range = chart.scales.x.max - chart.scales.x.min;
                                     chart.options.plugins.zoom.zoom.mode = (range < 4) ? 'y' : 'xy';
                                 }
@@ -69,7 +69,7 @@
                     },
                     scales: {
                         y: { 
-                            min: 0, // Hard-locks the bottom to 0
+                            min: 0, 
                             ticks: { color: '#aaa' }, 
                             grid: { color: '#252525' } 
                         },
