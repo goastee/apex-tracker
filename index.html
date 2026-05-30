@@ -84,7 +84,7 @@
 
     <script>
         // ==========================================
-        // CONFIGURATION: VERIFY SYSTEM PLATFORMS HERE
+        // CONFIGURATION: ENSURE UIDS MATCH SYSTEM CHANNELS
         // Platforms: "PC", "PS4", "X1", "SWITCH"
         // ==========================================
         const SQUAD = [
@@ -95,10 +95,12 @@
         ];
 
         const API_KEY = "7c4c9fa6a93906fa0d110967a57a8286";
+        
+        // Exact 2026 Season Ranking Boundary System Values
         const rankBases = { "Rookie": 0, "Bronze": 1000, "Silver": 3000, "Gold": 5400, "Platinum": 8200, "Diamond": 11400, "Master": 15000, "Predator": 15000 };
         const ranksOrder = ["Rookie", "Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Predator"];
 
-        let teamHistory = JSON.parse(localStorage.getItem('apexCorsSquadV8')) || [];
+        let teamHistory = JSON.parse(localStorage.getItem('apexCorsSquadV9')) || [];
         let eloChart;
         
         function getDisplayInfo(absRP) {
@@ -127,7 +129,6 @@
             let successCount = 0;
             let logs = [];
 
-            // Load values from history as baseline fallback values
             const lastRecord = teamHistory[teamHistory.length - 1];
             SQUAD.forEach(m => {
                 updatedScores[m.uid] = (lastRecord && lastRecord.scores[m.uid]) ? lastRecord.scores[m.uid] : 0;
@@ -136,17 +137,17 @@
             for (let member of SQUAD) {
                 try {
                     const targetUrl = `https://api.apexlegendsstatus.com/bridge?version=5&platform=${member.platform}&uid=${member.uid}&auth=${API_KEY}`;
-                    
-                    // Unblocked high-availability CORS gateway pipeline layout wrapper
                     const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
 
                     const response = await fetch(proxyUrl);
-                    if (!response.ok) throw new Error(`HTTP status code error: ${response.status}`);
+                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
                     const data = await response.json();
 
+                    // FIXED: Checks nested layout structures explicitly inside API data schemas
                     if (data && data.global && data.global.rank) {
-                        const score = parseInt(data.global.rank.rankScore);
+                        let score = parseInt(data.global.rank.rankScore);
+                        
                         if (!isNaN(score)) {
                             updatedScores[member.uid] = score;
                             successCount++;
@@ -156,21 +157,19 @@
                 } catch (e) {
                     console.error(`Failed to load data for ${member.label}:`, e.message);
                 }
-                // Spacing interval between individual requests to completely avoid rate limits
                 await delay(1200); 
             }
 
-            if (successCount === 0) {
+            if (successCount === 0 && teamHistory.length === 0) {
                 debugResult.className = "status-fail";
-                debugResult.innerText = "Connection failed. Verify your unique API Key is active.";
-                globalStatus.innerText = "Network sync failed.";
+                debugResult.innerText = "API Handshake returned blank parameters. Double-check configured UIDs.";
+                globalStatus.innerText = "Sync Failed.";
                 return;
             }
 
             debugResult.className = "status-success";
-            debugResult.innerText = `Verified payload updated successfully! (${logs.join(', ')})`;
+            debugResult.innerText = `Update complete! Successfully pulled data for (${logs.join(', ')})`;
 
-            // Identify changes to build graph history lines
             let changeDetected = teamHistory.length === 0;
             if (!changeDetected) {
                 for (let member of SQUAD) {
@@ -186,10 +185,9 @@
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     scores: { ...updatedScores }
                 });
-                localStorage.setItem('apexCorsSquadV8', JSON.stringify(teamHistory));
+                localStorage.setItem('apexCorsSquadV9', JSON.stringify(teamHistory));
             }
 
-            // Repopulate Badge elements
             statusBox.innerHTML = "";
             SQUAD.forEach(m => {
                 const currentScore = updatedScores[m.uid] || 0;
@@ -202,7 +200,7 @@
             });
 
             globalIndicator.className = "live-indicator live-active";
-            globalStatus.innerText = "Team Live Stream Connection Verified";
+            globalStatus.innerText = "Data Feed Synced";
             renderGroupChart();
         }
 
@@ -211,4 +209,60 @@
             const labels = teamHistory.map((t, i) => i === 0 ? "Start" : `${t.timestamp}`);
             const datasets = SQUAD.map(member => ({
                 label: member.label,
-                data:
+                data: teamHistory.map(h => h.scores[member.uid] || 0),
+                borderColor: member.color,
+                backgroundColor: 'transparent',
+                tension: 0.2,
+                pointRadius: 5,
+                borderWidth: 3
+            }));
+
+            let allPoints = [];
+            teamHistory.forEach(h => {
+                Object.values(h.scores).forEach(v => { if (v > 0) allPoints.push(v); });
+            });
+
+            const maxVal = Math.max(...allPoints, 2000);
+            const minVal = Math.min(...allPoints, 0);
+
+            if (eloChart) eloChart.destroy();
+
+            eloChart = new Chart(document.getElementById('eloChart'), {
+                type: 'line',
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            min: Math.max(0, minVal - 300), max: maxVal + 500,
+                            ticks: { color: '#aaa' }, grid: { color: '#252525' }
+                        },
+                        x: { ticks: { color: '#aaa' }, grid: { display: false } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } },
+                        tooltip: {
+                            mode: 'index', intersect: false,
+                            callbacks: {
+                                label: (ctx) => ` ${ctx.dataset.label}: ${getDisplayInfo(ctx.raw).rank} (${ctx.raw} RP)`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        fetchSquadStats();
+        setInterval(fetchSquadStats, 60000);
+
+        document.getElementById('forceCheckBtn').addEventListener('click', fetchSquadStats);
+        document.getElementById('clearData').addEventListener('click', () => {
+            if (confirm("Wipe cache?")) {
+                localStorage.removeItem('apexCorsSquadV9');
+                teamHistory = [];
+                fetchSquadStats();
+            }
+        });
+    </script>
+</body>
+</html>
