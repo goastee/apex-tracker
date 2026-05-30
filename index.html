@@ -18,11 +18,9 @@
     </div>
     
     <script>
-        // Mapping UIDs to names for a clean display
         const NAME_MAP = {
             "2292013299": "Luci",
             "1111111111": "Friend One"
-            // Add more UIDs here as needed
         };
 
         async function render() {
@@ -31,7 +29,7 @@
             
             const labels = history.map(h => h.timestamp);
             const datasets = Object.keys(history[0].scores).map((uid, index) => ({
-                label: NAME_MAP[uid] || `Player ${uid}`, // Use Name if found, otherwise show ID
+                label: NAME_MAP[uid] || `Player ${uid}`,
                 data: history.map(h => h.scores[uid]),
                 borderColor: index === 0 ? '#da292a' : '#3498db',
                 tension: 0.2
@@ -46,13 +44,21 @@
                     plugins: {
                         zoom: {
                             pan: { enabled: true, mode: 'xy' },
-                            zoom: { wheel: { enabled: true }, mode: 'xy' }
+                            zoom: {
+                                wheel: { enabled: true },
+                                mode: 'xy',
+                                onZoom: function({chart}) {
+                                    const range = chart.scales.x.max - chart.scales.x.min;
+                                    chart.options.plugins.zoom.zoom.mode = (range < 4) ? 'y' : 'xy';
+                                }
+                            }
                         }
                     },
                     scales: {
                         y: { 
-                            beginAtZero: true, // Forces graph to start at 0
-                            ticks: { color: '#aaa' }, 
+                            beginAtZero: true,
+                            min: 0,
+                            ticks: { color: '#aaa', beginAtZero: true }, 
                             grid: { color: '#252525' } 
                         },
                         x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
