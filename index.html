@@ -2,23 +2,23 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Apex Squad Tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <style>
-        body { background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 10px; }
+        body { background: #121212; color: white; font-family: sans-serif; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
         .header { text-align: center; margin-bottom: 10px; }
-        .btn-container { margin-bottom: 15px; display: flex; gap: 10px; }
+        .btn-container { margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; }
         button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #2980b9; }
         
-        .charts-container { display: flex; width: 98vw; gap: 20px; }
-        .chart-wrapper { flex: 1; height: 75vh; background: #1a1a1a; padding: 15px; border-radius: 8px; position: relative; }
+        .charts-container { display: flex; width: 98vw; gap: 20px; flex-wrap: wrap; }
+        .chart-wrapper { flex: 1 1 45%; min-height: 400px; background: #1a1a1a; padding: 15px; border-radius: 8px; position: relative; }
         
-        @media (max-width: 1000px) {
+        @media (max-width: 900px) {
             .charts-container { flex-direction: column; }
-            .chart-wrapper { height: 50vh; }
+            .chart-wrapper { flex: 1 1 100%; min-height: 300px; }
         }
     </style>
 </head>
@@ -54,6 +54,7 @@
             const labels = data.map(d => d.timestamp);
             const uids = [...new Set(data.flatMap(d => Object.keys(d.scores)))];
 
+            // Render Main Chart
             const datasets = uids.map((uid, i) => ({
                 label: NAME_MAP[uid] || uid,
                 data: data.map(d => d.scores[uid] || null),
@@ -72,6 +73,7 @@
                 mainChart.update('none');
             }
 
+            // Render Daily Chart
             const lastDate = labels[labels.length - 1].split(' ')[0];
             const dailyData = data.filter(d => d.timestamp.includes(lastDate));
             const dailyLabels = dailyData.map(d => d.timestamp.split(' ').pop());
