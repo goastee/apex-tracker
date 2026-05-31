@@ -7,18 +7,35 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    
     <style>
-        body { background: #121212; color: white; font-family: sans-serif; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        body { 
+            background: #121212; color: white; font-family: sans-serif; 
+            margin: 0; padding: 10px; display: flex; flex-direction: column; 
+            align-items: center; min-height: 100vh; 
+        }
         .header { text-align: center; margin-bottom: 10px; }
         .btn-container { margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; }
-        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button { 
+            background: #3498db; color: white; border: none; 
+            padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; 
+        }
+        button:hover { background: #2980b9; }
         
-        .charts-container { display: flex; width: 100%; max-width: 1800px; gap: 20px; flex-wrap: wrap; padding: 0 10px; box-sizing: border-box; }
-        .chart-wrapper { flex: 1 1 400px; min-height: 500px; background: #1a1a1a; padding: 15px; border-radius: 8px; position: relative; }
+        .charts-container { 
+            display: flex; width: 100%; gap: 20px; flex-wrap: wrap; 
+            padding: 0 10px; box-sizing: border-box; 
+        }
+        
+        .chart-wrapper { 
+            flex: 1 1 600px; height: 75vh; background: #1a1a1a; 
+            padding: 15px; border-radius: 8px; position: relative; 
+        }
         
         @media (max-width: 900px) {
             .charts-container { flex-direction: column; }
-            .chart-wrapper { flex: 1 1 100%; min-height: 300px; }
+            .chart-wrapper { flex: 1 1 100%; height: 40vh; }
         }
     </style>
 </head>
@@ -38,8 +55,37 @@
 
     <script>
         let mainChart, dailyChart;
-        const NAME_MAP = {"2292013299": "Luci", "1011944913282": "Saywhat", "1012860147038": "Talon", "1011877813719": "Anubis", "2433485727": "trevor", "1004525474326": "mamapunk"};
+        const NAME_MAP = {
+            "2292013299": "Luci", "1011944913282": "Saywhat", "1012860147038": "Talon", 
+            "1011877813719": "Anubis", "2433485727": "trevor", "1004525474326": "mamapunk"
+        };
         const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22'];
+
+        // --- ANNOTATION SETUP ---
+        const RANK_THRESHOLDS = {
+            "Bronze": { rp: 1000, color: '#cd7f32' },
+            "Silver": { rp: 3000, color: '#bdc3c7' },
+            "Gold": { rp: 5400, color: '#f1c40f' },
+            "Platinum": { rp: 8200, color: '#1abc9c' },
+            "Diamond": { rp: 11400, color: '#3498db' },
+            "Master": { rp: 15000, color: '#9b59b6' }
+        };
+
+        const rankAnnotations = {};
+        Object.keys(RANK_THRESHOLDS).forEach(rank => {
+            rankAnnotations[rank] = {
+                type: 'line', yMin: RANK_THRESHOLDS[rank].rp, yMax: RANK_THRESHOLDS[rank].rp,
+                borderColor: RANK_THRESHOLDS[rank].color, borderWidth: 1, borderDash: [5, 5], 
+                label: { display: true, content: rank, position: 'start', backgroundColor: 'rgba(18, 18, 18, 0.8)', color: RANK_THRESHOLDS[rank].color, font: { size: 12, weight: 'bold' } }
+            };
+        });
+
+        const zeroLineAnnotation = {
+            zero: {
+                type: 'line', yMin: 0, yMax: 0, borderColor: 'rgba(255, 255, 255, 0.5)', borderWidth: 2,
+                label: { display: true, content: 'BREAK EVEN (0)', position: 'end', backgroundColor: 'rgba(18, 18, 18, 0.8)', color: '#fff', font: { size: 10 } }
+            }
+        };
 
         function getZoomOptions() {
             return {
@@ -49,52 +95,115 @@
         }
 
         async function updateCharts() {
-            const res = await fetch('history.json?nocache=' + Date.now());
-            const data = await res.json();
-            const labels = data.map(d => d.timestamp);
-            const uids = [...new Set(data.flatMap(d => Object.keys(d.scores)))];
+            try {
+                const res = await fetch('history.json?nocache=' + Date.now());
+                const data = await res.json();
+                
+                if (!data || data.length === 0) return;
 
-            const datasets = uids.map((uid, i) => ({
-                label: NAME_MAP[uid] || uid,
-                data: data.map(d => d.scores[uid] || null),
-                borderColor: COLORS[i % COLORS.length],
-                spanGaps: true
-            }));
+                const labels = data.map(d => d.timestamp);
+                const uids = [...new Set(data.flatMap(d => Object.keys(d.scores)))];
+                
+                // Calculate Min/Max for main chart padding
+                const allScores = data.flatMap(d => Object.values(d.scores));
+                const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
+                const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
 
-            if (!mainChart) {
-                mainChart = new Chart(document.getElementById('mainChart'), {
-                    type: 'line', data: { labels, datasets },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { zoom: getZoomOptions() } }
-                });
-            } else {
-                mainChart.data.labels = labels;
-                mainChart.data.datasets = datasets;
-                mainChart.update('none');
-            }
-
-            const lastDate = labels[labels.length - 1].split(' ')[0];
-            const dailyData = data.filter(d => d.timestamp.includes(lastDate));
-            const dailyLabels = dailyData.map(d => d.timestamp.split(' ').pop());
-            
-            const dailyDatasets = uids.map((uid, i) => {
-                const startScore = dailyData.find(d => d.scores[uid] !== undefined)?.scores[uid];
-                return {
+                // ==========================================
+                // MAIN CHART SETUP
+                // ==========================================
+                const datasets = uids.map((uid, i) => ({
                     label: NAME_MAP[uid] || uid,
-                    data: dailyData.map(d => d.scores[uid] !== undefined ? d.scores[uid] - startScore : null),
+                    data: data.map(d => d.scores[uid] !== undefined ? d.scores[uid] : null),
                     borderColor: COLORS[i % COLORS.length],
                     spanGaps: true
-                };
-            });
+                }));
 
-            if (!dailyChart) {
-                dailyChart = new Chart(document.getElementById('dailyChart'), {
-                    type: 'line', data: { labels: dailyLabels, datasets: dailyDatasets },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { zoom: getZoomOptions() } }
+                if (!mainChart) {
+                    mainChart = new Chart(document.getElementById('mainChart'), {
+                        type: 'line', data: { labels, datasets },
+                        options: { 
+                            responsive: true, maintainAspectRatio: false, 
+                            plugins: { 
+                                zoom: getZoomOptions(),
+                                annotation: { annotations: rankAnnotations }
+                            },
+                            scales: {
+                                y: { suggestedMin: minRP, suggestedMax: maxRP, ticks: { color: '#aaa' }, grid: { color: '#252525' } },
+                                x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
+                            }
+                        }
+                    });
+                } else {
+                    mainChart.data.labels = labels;
+                    datasets.forEach((newDs, i) => { if (mainChart.data.datasets[i]) newDs.hidden = !mainChart.isDatasetVisible(i); });
+                    mainChart.data.datasets = datasets;
+                    mainChart.options.scales.y.suggestedMin = minRP;
+                    mainChart.options.scales.y.suggestedMax = maxRP;
+                    mainChart.update('none');
+                }
+
+                // ==========================================
+                // DAILY CHART SETUP
+                // ==========================================
+                const lastDate = labels[labels.length - 1].split(' ')[0];
+                const dailyData = data.filter(d => d.timestamp.includes(lastDate));
+                const dailyLabels = dailyData.map(d => d.timestamp.split(' ').pop());
+                
+                const dailyDatasets = [];
+                
+                uids.forEach((uid, i) => {
+                    const startEntry = dailyData.find(d => d.scores[uid] !== undefined);
+                    if (startEntry) {
+                        const startScore = startEntry.scores[uid];
+                        let scoreMoved = false;
+                        
+                        const dData = dailyData.map(d => {
+                            if (d.scores[uid] !== undefined) {
+                                if (d.scores[uid] !== startScore) scoreMoved = true;
+                                return d.scores[uid] - startScore;
+                            }
+                            return null;
+                        });
+
+                        dailyDatasets.push({
+                            label: NAME_MAP[uid] || uid,
+                            data: dData,
+                            borderColor: COLORS[i % COLORS.length],
+                            spanGaps: true,
+                            hidden: !scoreMoved // Auto-hide if they flatlined today
+                        });
+                    }
                 });
-            } else {
-                dailyChart.data.labels = dailyLabels;
-                dailyChart.data.datasets = dailyDatasets;
-                dailyChart.update('none');
+
+                if (!dailyChart) {
+                    dailyChart = new Chart(document.getElementById('dailyChart'), {
+                        type: 'line', data: { labels: dailyLabels, datasets: dailyDatasets },
+                        options: { 
+                            responsive: true, maintainAspectRatio: false, 
+                            plugins: { 
+                                zoom: getZoomOptions(),
+                                annotation: { annotations: zeroLineAnnotation }
+                            },
+                            scales: {
+                                y: { suggestedMin: -100, suggestedMax: 100, ticks: { color: '#aaa' }, grid: { color: '#252525' } },
+                                x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
+                            }
+                        }
+                    });
+                } else {
+                    dailyChart.data.labels = dailyLabels;
+                    // Preserve manual toggles, otherwise rely on the auto-hide logic
+                    dailyDatasets.forEach((newDs, i) => { 
+                        if (dailyChart.data.datasets[i]) {
+                            newDs.hidden = !dailyChart.isDatasetVisible(i); 
+                        }
+                    });
+                    dailyChart.data.datasets = dailyDatasets;
+                    dailyChart.update('none');
+                }
+            } catch (error) {
+                console.error("Error fetching or rendering data:", error);
             }
         }
 
