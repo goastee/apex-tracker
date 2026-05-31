@@ -12,11 +12,12 @@
         body { 
             background: #121212; color: white; font-family: sans-serif; 
             display: flex; flex-direction: column; align-items: center; 
+            margin: 0; padding: 10px;
         }
         .header-container {
             display: flex; flex-direction: column; align-items: center; margin-top: 10px; gap: 5px;
         }
-        h1 { margin-bottom: 5px; }
+        h1 { margin-bottom: 5px; text-align: center;}
         .status-text { color: #888; font-size: 14px; margin-bottom: 10px; font-weight: bold; }
         .btn-container { display: flex; gap: 10px; }
         button {
@@ -26,8 +27,29 @@
         button:hover { background-color: #2980b9; }
         .refresh-btn { background-color: #2ecc71; }
         .refresh-btn:hover { background-color: #27ae60; }
-        .chart-container { width: 90vw; height: 70vh; margin-top: 15px; cursor: grab; }
-        .chart-container:active { cursor: grabbing; }
+        
+        /* New side-by-side layout */
+        .charts-wrapper {
+            display: flex;
+            flex-direction: row;
+            width: 98vw;
+            height: 75vh;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .chart-container { 
+            flex: 1; 
+            position: relative; 
+            background: #1a1a1a; 
+            border-radius: 8px; 
+            padding: 10px;
+        }
+        .chart-title { text-align: center; color: #ddd; font-weight: bold; margin-bottom: 10px; font-size: 1.2rem; }
+        
+        /* Stack on smaller screens/phones */
+        @media (max-width: 1000px) {
+            .charts-wrapper { flex-direction: column; height: 140vh; }
+        }
     </style>
 </head>
 <body>
@@ -36,12 +58,20 @@
         <div id="lastUpdate" class="status-text">Checking history file...</div>
         <div class="btn-container">
             <button class="refresh-btn" onclick="render()">Refresh Data</button>
-            <button onclick="if(window.apexChart) window.apexChart.resetZoom()">Reset Zoom</button>
+            <button onclick="resetZoom()">Reset Zoom</button>
         </div>
     </div>
     
-    <div class="chart-container">
-        <canvas id="myChart"></canvas>
+    <div class="charts-wrapper">
+        <div class="chart-container">
+            <div class="chart-title">Total Rank Score</div>
+            <canvas id="myChart"></canvas>
+        </div>
+        
+        <div class="chart-container">
+            <div class="chart-title">Today's Session (+/- RP)</div>
+            <canvas id="dailyChart"></canvas>
+        </div>
     </div>
     
     <script>
@@ -53,6 +83,8 @@
             "2433485727": "trevor",        
             "1004525474326": "mamapunk"    
         };
+
+        const THEME_COLORS = ['#da292a', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c'];
 
         const RANK_THRESHOLDS = {
             "Bronze": { rp: 1000, color: '#cd7f32' },
@@ -66,35 +98,39 @@
         const rankAnnotations = {};
         Object.keys(RANK_THRESHOLDS).forEach(rank => {
             rankAnnotations[rank] = {
-                type: 'line',
-                yMin: RANK_THRESHOLDS[rank].rp,
-                yMax: RANK_THRESHOLDS[rank].rp,
-                borderColor: RANK_THRESHOLDS[rank].color,
-                borderWidth: 1,
-                borderDash: [5, 5], 
-                label: {
-                    display: true,
-                    content: rank,
-                    position: 'start',
-                    backgroundColor: 'rgba(18, 18, 18, 0.8)',
-                    color: RANK_THRESHOLDS[rank].color,
-                    font: { size: 12, weight: 'bold' }
-                }
+                type: 'line', yMin: RANK_THRESHOLDS[rank].rp, yMax: RANK_THRESHOLDS[rank].rp,
+                borderColor: RANK_THRESHOLDS[rank].color, borderWidth: 1, borderDash: [5, 5], 
+                label: { display: true, content: rank, position: 'start', backgroundColor: 'rgba(18, 18, 18, 0.8)', color: RANK_THRESHOLDS[rank].color, font: { size: 12, weight: 'bold' } }
             };
         });
+
+        // Add a permanent zero-line for the daily chart so you know if you are positive/negative
+        const zeroLineAnnotation = {
+            zero: {
+                type: 'line', yMin: 0, yMax: 0, borderColor: 'rgba(255, 255, 255, 0.5)', borderWidth: 2,
+                label: { display: true, content: 'BREAK EVEN (0)', position: 'end', backgroundColor: 'rgba(18, 18, 18, 0.8)', color: '#fff', font: { size: 10 } }
+            }
+        };
+
+        function resetZoom() {
+            if(window.apexChart) window.apexChart.resetZoom();
+            if(window.dailyChart) window.dailyChart.resetZoom();
+        }
 
         async function render() {
             const res = await fetch('history.json?nocache=' + Date.now());
             const history = await res.json();
             
             if (history && history.length > 0) {
-                const lastTimestamp = history[history.length - 1].timestamp;
-                document.getElementById('lastUpdate').innerText = `Last data update: ${lastTimestamp}`;
+                document.getElementById('lastUpdate').innerText = `Last data update: ${history[history.length - 1].timestamp}`;
             }
 
             const allUIDs = [...new Set(history.flatMap(h => Object.keys(h.scores)))];
-            const labels = history.map(h => h.timestamp);
             
+            // ==========================================
+            // CHART 1: MAIN GRAPH DATA PREP
+            // ==========================================
+            const labels = history.map(h => h.timestamp);
             const allScores = history.flatMap(h => Object.values(h.scores));
             const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
             const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
@@ -102,69 +138,95 @@
             const datasets = allUIDs.map((uid, index) => ({
                 label: NAME_MAP[uid] || `Player ${uid}`,
                 data: history.map(h => h.scores[uid] !== undefined ? h.scores[uid] : null),
-                borderColor: ['#da292a', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c'][index % 7],
-                tension: 0,
-                borderWidth: 2
+                borderColor: THEME_COLORS[index % 7], tension: 0, borderWidth: 2
             }));
 
-            if (window.apexChart) {
-                // 1. Update the X-axis labels seamlessly
-                window.apexChart.data.labels = labels;
-                
-                // 2. Update datasets while preserving who you clicked off in the legend
-                datasets.forEach((newDs, i) => {
-                    if (window.apexChart.data.datasets[i]) {
-                        // Check if the user currently has this player hidden
-                        newDs.hidden = !window.apexChart.isDatasetVisible(i);
+            // ==========================================
+            // CHART 2: DAILY GRAPH DATA PREP
+            // ==========================================
+            let dailyDatasets = [];
+            let dailyLabels = [];
+            
+            if (history.length > 0) {
+                // Find what "today" is based on the latest timestamp (e.g. "05/31")
+                const latestDay = history[history.length - 1].timestamp.split(' ')[0];
+                const todayHistory = history.filter(h => h.timestamp.startsWith(latestDay));
+                dailyLabels = todayHistory.map(h => h.timestamp.split(' ')[1]); // Only show the time (HH:MM)
+
+                allUIDs.forEach((uid, index) => {
+                    // Find their starting score for the day
+                    const startEntry = todayHistory.find(h => h.scores[uid] !== undefined);
+                    
+                    if (startEntry) {
+                        const startScore = startEntry.scores[uid];
+                        let playedToday = false;
+                        
+                        const dailyData = todayHistory.map(h => {
+                            if (h.scores[uid] !== undefined) {
+                                // If their score changed from the start of the day, they are actively playing
+                                if (h.scores[uid] !== startScore) playedToday = true;
+                                return h.scores[uid] - startScore; // Offset to 0
+                            }
+                            return null;
+                        });
+
+                        // Only add them to the daily chart if their RP actually moved today
+                        if (playedToday) {
+                            dailyDatasets.push({
+                                label: NAME_MAP[uid] || `Player ${uid}`,
+                                data: dailyData,
+                                borderColor: THEME_COLORS[index % 7], tension: 0, borderWidth: 3
+                            });
+                        }
                     }
                 });
+            }
+
+            // ==========================================
+            // RENDER LOGIC (Non-destructive)
+            // ==========================================
+            
+            // --- Chart 1: Main ---
+            if (window.apexChart) {
+                window.apexChart.data.labels = labels;
+                datasets.forEach((newDs, i) => { if (window.apexChart.data.datasets[i]) newDs.hidden = !window.apexChart.isDatasetVisible(i); });
                 window.apexChart.data.datasets = datasets;
-                
-                // 3. Update the hard borders just in case someone gained/lost enough RP to shift the graph bounds
                 window.apexChart.options.plugins.zoom.limits.y.min = minRP;
                 window.apexChart.options.plugins.zoom.limits.y.max = maxRP;
-                
-                // 4. Push the update without moving the user's camera/zoom
                 window.apexChart.update('none'); 
             } else {
-                // Initial load
                 window.apexChart = new Chart(document.getElementById('myChart'), {
-                    type: 'line',
-                    data: { labels, datasets },
+                    type: 'line', data: { labels, datasets },
                     options: {
                         responsive: true, maintainAspectRatio: false,
                         plugins: {
-                            annotation: {
-                                annotations: rankAnnotations
-                            },
-                            zoom: {
-                                limits: {
-                                    y: { min: minRP, max: maxRP },
-                                    x: { minRange: 5 } 
-                                },
-                                pan: { 
-                                    enabled: true, 
-                                    mode: 'xy',
-                                    threshold: 2
-                                },
-                                zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    mode: 'xy'
-                                }
-                            }
+                            annotation: { annotations: rankAnnotations },
+                            zoom: { limits: { y: { min: minRP, max: maxRP }, x: { minRange: 5 } }, pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } }
+                        },
+                        scales: { y: { min: minRP, max: maxRP, ticks: { color: '#aaa' }, grid: { color: '#252525' } }, x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } } }
+                    }
+                });
+            }
+
+            // --- Chart 2: Daily ---
+            if (window.dailyChart) {
+                window.dailyChart.data.labels = dailyLabels;
+                dailyDatasets.forEach((newDs, i) => { if (window.dailyChart.data.datasets[i]) newDs.hidden = !window.dailyChart.isDatasetVisible(i); });
+                window.dailyChart.data.datasets = dailyDatasets;
+                window.dailyChart.update('none');
+            } else {
+                window.dailyChart = new Chart(document.getElementById('dailyChart'), {
+                    type: 'line', data: { labels: dailyLabels, datasets: dailyDatasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            annotation: { annotations: zeroLineAnnotation },
+                            zoom: { pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } }
                         },
                         scales: {
-                            y: { 
-                                min: minRP, 
-                                max: maxRP,
-                                ticks: { color: '#aaa' }, 
-                                grid: { color: '#252525' } 
-                            },
-                            x: { 
-                                ticks: { color: '#aaa' }, 
-                                grid: { color: '#252525' } 
-                            }
+                            // We let Chart.js auto-scale the Y-axis here so it perfectly hugs your daily session
+                            y: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }, 
+                            x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
                         }
                     }
                 });
