@@ -8,13 +8,13 @@
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <style>
-        body { background: #121212; color: white; font-family: sans-serif; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+        body { background: #121212; color: white; font-family: sans-serif; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
         .header { text-align: center; margin-bottom: 10px; }
         .btn-container { margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; }
         button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         
-        .charts-container { display: flex; width: 98vw; gap: 20px; flex-wrap: wrap; }
-        .chart-wrapper { flex: 1 1 45%; min-height: 400px; background: #1a1a1a; padding: 15px; border-radius: 8px; position: relative; }
+        .charts-container { display: flex; width: 100%; max-width: 1800px; gap: 20px; flex-wrap: wrap; padding: 0 10px; box-sizing: border-box; }
+        .chart-wrapper { flex: 1 1 400px; min-height: 500px; background: #1a1a1a; padding: 15px; border-radius: 8px; position: relative; }
         
         @media (max-width: 900px) {
             .charts-container { flex-direction: column; }
@@ -54,7 +54,6 @@
             const labels = data.map(d => d.timestamp);
             const uids = [...new Set(data.flatMap(d => Object.keys(d.scores)))];
 
-            // Render Main Chart
             const datasets = uids.map((uid, i) => ({
                 label: NAME_MAP[uid] || uid,
                 data: data.map(d => d.scores[uid] || null),
@@ -73,7 +72,6 @@
                 mainChart.update('none');
             }
 
-            // Render Daily Chart
             const lastDate = labels[labels.length - 1].split(' ')[0];
             const dailyData = data.filter(d => d.timestamp.includes(lastDate));
             const dailyLabels = dailyData.map(d => d.timestamp.split(' ').pop());
