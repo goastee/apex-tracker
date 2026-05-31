@@ -3,13 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Apex Squad Tracker</title>
-    <!-- Core Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Hammer.js for panning -->
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
-    <!-- Zoom Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
-    <!-- Annotation Plugin for Rank Lines -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     
     <style>
@@ -94,8 +90,6 @@
             if (history && history.length > 0) {
                 const lastTimestamp = history[history.length - 1].timestamp;
                 document.getElementById('lastUpdate').innerText = `Last data update: ${lastTimestamp}`;
-            } else {
-                document.getElementById('lastUpdate').innerText = `No data found in history.json`;
             }
 
             const allUIDs = [...new Set(history.flatMap(h => Object.keys(h.scores)))];
@@ -114,49 +108,67 @@
             }));
 
             if (window.apexChart) {
-                window.apexChart.destroy();
-            }
-
-            window.apexChart = new Chart(document.getElementById('myChart'), {
-                type: 'line',
-                data: { labels, datasets },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: {
-                        annotation: {
-                            annotations: rankAnnotations
-                        },
-                        zoom: {
-                            limits: {
-                                y: { min: minRP, max: maxRP },
-                                x: { minRange: 5 } // Capped horizontally to always show at least 5 games
-                            },
-                            pan: { 
-                                enabled: true, 
-                                mode: 'xy',
-                                threshold: 2 
+                // 1. Update the X-axis labels seamlessly
+                window.apexChart.data.labels = labels;
+                
+                // 2. Update datasets while preserving who you clicked off in the legend
+                datasets.forEach((newDs, i) => {
+                    if (window.apexChart.data.datasets[i]) {
+                        // Check if the user currently has this player hidden
+                        newDs.hidden = !window.apexChart.isDatasetVisible(i);
+                    }
+                });
+                window.apexChart.data.datasets = datasets;
+                
+                // 3. Update the hard borders just in case someone gained/lost enough RP to shift the graph bounds
+                window.apexChart.options.plugins.zoom.limits.y.min = minRP;
+                window.apexChart.options.plugins.zoom.limits.y.max = maxRP;
+                
+                // 4. Push the update without moving the user's camera/zoom
+                window.apexChart.update('none'); 
+            } else {
+                // Initial load
+                window.apexChart = new Chart(document.getElementById('myChart'), {
+                    type: 'line',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            annotation: {
+                                annotations: rankAnnotations
                             },
                             zoom: {
-                                wheel: { enabled: true },
-                                pinch: { enabled: true },
-                                mode: 'xy'
+                                limits: {
+                                    y: { min: minRP, max: maxRP },
+                                    x: { minRange: 5 } 
+                                },
+                                pan: { 
+                                    enabled: true, 
+                                    mode: 'xy',
+                                    threshold: 2
+                                },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'xy'
+                                }
+                            }
+                        },
+                        scales: {
+                            y: { 
+                                min: minRP, 
+                                max: maxRP,
+                                ticks: { color: '#aaa' }, 
+                                grid: { color: '#252525' } 
+                            },
+                            x: { 
+                                ticks: { color: '#aaa' }, 
+                                grid: { color: '#252525' } 
                             }
                         }
-                    },
-                    scales: {
-                        y: { 
-                            min: minRP, 
-                            max: maxRP,
-                            ticks: { color: '#aaa' }, 
-                            grid: { color: '#252525' } 
-                        },
-                        x: { 
-                            ticks: { color: '#aaa' }, 
-                            grid: { color: '#252525' } 
-                        }
                     }
-                }
-            });
+                });
+            }
         }
         
         render();
