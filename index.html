@@ -16,10 +16,12 @@
             align-items: center; min-height: 100vh; 
         }
         .header { text-align: center; margin-bottom: 10px; }
+        .header h1 { margin: 5px 0 10px 0; }
         .btn-container { margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; }
         button { 
             background: #3498db; color: white; border: none; 
             padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; 
+            font-size: 1rem;
         }
         button:hover { background: #2980b9; }
         
@@ -33,9 +35,16 @@
             padding: 15px; border-radius: 8px; position: relative; 
         }
         
+        /* --- MOBILE OVERRIDES --- */
         @media (max-width: 900px) {
-            .charts-container { flex-direction: column; }
-            .chart-wrapper { flex: 1 1 100%; height: 40vh; }
+            body { padding: 5px; }
+            .header h1 { font-size: 1.2rem; margin-bottom: 5px; } /* Shrink title */
+            .btn-container { margin-bottom: 10px; gap: 5px; } /* Tighter button spacing */
+            button { padding: 6px 12px; font-size: 0.85rem; } /* Shrink buttons */
+            
+            .charts-container { flex-direction: column; gap: 10px; padding: 0; }
+            /* Reduce padding inside the chart box to give the graph more room */
+            .chart-wrapper { flex: 1 1 100%; height: 40vh; padding: 10px; } 
         }
     </style>
 </head>
