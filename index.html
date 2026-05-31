@@ -28,7 +28,7 @@
         .refresh-btn { background-color: #2ecc71; }
         .refresh-btn:hover { background-color: #27ae60; }
         
-        /* New side-by-side layout */
+        /* Side-by-side layout */
         .charts-wrapper {
             display: flex;
             flex-direction: row;
@@ -46,7 +46,6 @@
         }
         .chart-title { text-align: center; color: #ddd; font-weight: bold; margin-bottom: 10px; font-size: 1.2rem; }
         
-        /* Stack on smaller screens/phones */
         @media (max-width: 1000px) {
             .charts-wrapper { flex-direction: column; height: 140vh; }
         }
@@ -104,7 +103,6 @@
             };
         });
 
-        // Add a permanent zero-line for the daily chart so you know if you are positive/negative
         const zeroLineAnnotation = {
             zero: {
                 type: 'line', yMin: 0, yMax: 0, borderColor: 'rgba(255, 255, 255, 0.5)', borderWidth: 2,
@@ -148,45 +146,48 @@
             let dailyLabels = [];
             
             if (history.length > 0) {
-                // Find what "today" is based on the latest timestamp (e.g. "05/31")
-                const latestDay = history[history.length - 1].timestamp.split(' ')[0];
+                // Safely extract the date (e.g. "05/31")
+                const lastTimestamp = history[history.length - 1].timestamp;
+                const latestDay = lastTimestamp.includes(' ') ? lastTimestamp.split(' ')[0] : lastTimestamp;
+                
                 const todayHistory = history.filter(h => h.timestamp.startsWith(latestDay));
-                dailyLabels = todayHistory.map(h => h.timestamp.split(' ')[1]); // Only show the time (HH:MM)
+                
+                // Safely extract just the HH:MM time for the labels
+                dailyLabels = todayHistory.map(h => {
+                    const parts = h.timestamp.split(' ');
+                    return parts.length > 1 ? parts[1] : parts[0];
+                });
 
                 allUIDs.forEach((uid, index) => {
-                    // Find their starting score for the day
                     const startEntry = todayHistory.find(h => h.scores[uid] !== undefined);
                     
                     if (startEntry) {
                         const startScore = startEntry.scores[uid];
-                        let playedToday = false;
+                        let scoreMoved = false;
                         
                         const dailyData = todayHistory.map(h => {
                             if (h.scores[uid] !== undefined) {
-                                // If their score changed from the start of the day, they are actively playing
-                                if (h.scores[uid] !== startScore) playedToday = true;
-                                return h.scores[uid] - startScore; // Offset to 0
+                                if (h.scores[uid] !== startScore) scoreMoved = true;
+                                return h.scores[uid] - startScore; 
                             }
                             return null;
                         });
 
-                        // Only add them to the daily chart if their RP actually moved today
-                        if (playedToday) {
-                            dailyDatasets.push({
-                                label: NAME_MAP[uid] || `Player ${uid}`,
-                                data: dailyData,
-                                borderColor: THEME_COLORS[index % 7], tension: 0, borderWidth: 3
-                            });
-                        }
+                        // We push EVERYONE to the graph so Chart.js never crashes from an empty array.
+                        // But if they haven't moved RP today, we auto-hide them!
+                        dailyDatasets.push({
+                            label: NAME_MAP[uid] || `Player ${uid}`,
+                            data: dailyData,
+                            borderColor: THEME_COLORS[index % 7], tension: 0, borderWidth: 3,
+                            hidden: !scoreMoved 
+                        });
                     }
                 });
             }
 
             // ==========================================
-            // RENDER LOGIC (Non-destructive)
+            // RENDER LOGIC
             // ==========================================
-            
-            // --- Chart 1: Main ---
             if (window.apexChart) {
                 window.apexChart.data.labels = labels;
                 datasets.forEach((newDs, i) => { if (window.apexChart.data.datasets[i]) newDs.hidden = !window.apexChart.isDatasetVisible(i); });
@@ -199,19 +200,23 @@
                     type: 'line', data: { labels, datasets },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: {
-                            annotation: { annotations: rankAnnotations },
-                            zoom: { limits: { y: { min: minRP, max: maxRP }, x: { minRange: 5 } }, pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } }
-                        },
+                        plugins: { annotation: { annotations: rankAnnotations }, zoom: { limits: { y: { min: minRP, max: maxRP }, x: { minRange: 5 } }, pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } } },
                         scales: { y: { min: minRP, max: maxRP, ticks: { color: '#aaa' }, grid: { color: '#252525' } }, x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } } }
                     }
                 });
             }
 
-            // --- Chart 2: Daily ---
             if (window.dailyChart) {
                 window.dailyChart.data.labels = dailyLabels;
-                dailyDatasets.forEach((newDs, i) => { if (window.dailyChart.data.datasets[i]) newDs.hidden = !window.dailyChart.isDatasetVisible(i); });
+                
+                // Only respect manual toggles for players who actually moved.
+                // If the user manually clicked someone on/off, preserve that choice.
+                dailyDatasets.forEach((newDs, i) => { 
+                    if (window.dailyChart.data.datasets[i]) {
+                        newDs.hidden = !window.dailyChart.isDatasetVisible(i); 
+                    }
+                });
+                
                 window.dailyChart.data.datasets = dailyDatasets;
                 window.dailyChart.update('none');
             } else {
@@ -219,13 +224,13 @@
                     type: 'line', data: { labels: dailyLabels, datasets: dailyDatasets },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: {
-                            annotation: { annotations: zeroLineAnnotation },
-                            zoom: { pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } }
-                        },
+                        plugins: { annotation: { annotations: zeroLineAnnotation }, zoom: { pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } } },
                         scales: {
-                            // We let Chart.js auto-scale the Y-axis here so it perfectly hugs your daily session
-                            y: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }, 
+                            y: { 
+                                ticks: { color: '#aaa' }, grid: { color: '#252525' },
+                                suggestedMin: -100, // Forces the graph to give 0 some breathing room
+                                suggestedMax: 100
+                            }, 
                             x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
                         }
                     }
