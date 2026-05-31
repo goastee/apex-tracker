@@ -3,9 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <title>Apex Squad Tracker</title>
+    <!-- Core Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Hammer.js for panning -->
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <!-- Zoom Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <!-- Annotation Plugin for Rank Lines -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     
     <style>
@@ -87,7 +91,6 @@
             const res = await fetch('history.json?nocache=' + Date.now());
             const history = await res.json();
             
-            // Displays when the last log entry was written to the history file
             if (history && history.length > 0) {
                 const lastTimestamp = history[history.length - 1].timestamp;
                 document.getElementById('lastUpdate').innerText = `Last data update: ${lastTimestamp}`;
@@ -97,6 +100,10 @@
 
             const allUIDs = [...new Set(history.flatMap(h => Object.keys(h.scores)))];
             const labels = history.map(h => h.timestamp);
+            
+            const allScores = history.flatMap(h => Object.values(h.scores));
+            const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
+            const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
             
             const datasets = allUIDs.map((uid, index) => ({
                 label: NAME_MAP[uid] || `Player ${uid}`,
@@ -121,7 +128,8 @@
                         },
                         zoom: {
                             limits: {
-                                y: { min: 0, max: 20000 } 
+                                y: { min: minRP, max: maxRP },
+                                x: { minRange: 5 } // Capped horizontally to always show at least 5 games
                             },
                             pan: { 
                                 enabled: true, 
@@ -137,8 +145,8 @@
                     },
                     scales: {
                         y: { 
-                            min: 0, 
-                            max: 20000,
+                            min: minRP, 
+                            max: maxRP,
                             ticks: { color: '#aaa' }, 
                             grid: { color: '#252525' } 
                         },
@@ -152,7 +160,6 @@
         }
         
         render();
-        // Page data now auto-refreshes every 30 seconds
         setInterval(render, 30000); 
     </script>
 </body>
