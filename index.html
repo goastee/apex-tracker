@@ -6,20 +6,35 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     <style>
         body { background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 10px; }
-        .chart-wrapper { width: 95vw; height: 45vh; background: #1a1a1a; margin-bottom: 20px; padding: 10px; border-radius: 8px; position: relative; }
-        .btn-container { margin-bottom: 10px; }
-        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+        .header { text-align: center; margin-bottom: 10px; }
+        .btn-container { margin-bottom: 15px; display: flex; gap: 10px; }
+        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #2980b9; }
+        
+        .charts-container { display: flex; width: 98vw; gap: 20px; }
+        .chart-wrapper { flex: 1; height: 75vh; background: #1a1a1a; padding: 15px; border-radius: 8px; position: relative; }
+        
+        @media (max-width: 1000px) {
+            .charts-container { flex-direction: column; }
+            .chart-wrapper { height: 50vh; }
+        }
     </style>
 </head>
 <body>
-    <div class="btn-container">
-        <button onclick="resetZoomAll()">Reset Zoom</button>
+    <div class="header">
+        <h1>Squad Live Performance</h1>
+        <div class="btn-container">
+            <button onclick="updateCharts()">Refresh Data</button>
+            <button onclick="resetZoomAll()">Reset Zoom</button>
+        </div>
     </div>
-    <div class="chart-wrapper"><canvas id="mainChart"></canvas></div>
-    <div class="chart-wrapper"><canvas id="dailyChart"></canvas></div>
+
+    <div class="charts-container">
+        <div class="chart-wrapper"><canvas id="mainChart"></canvas></div>
+        <div class="chart-wrapper"><canvas id="dailyChart"></canvas></div>
+    </div>
 
     <script>
         let mainChart, dailyChart;
@@ -28,7 +43,7 @@
 
         function getZoomOptions() {
             return {
-                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy', limits: { x: { min: 'original', max: 'original' } } },
+                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' },
                 pan: { enabled: true, mode: 'xy' }
             };
         }
@@ -39,7 +54,6 @@
             const labels = data.map(d => d.timestamp);
             const uids = [...new Set(data.flatMap(d => Object.keys(d.scores)))];
 
-            // Setup Main Chart
             const datasets = uids.map((uid, i) => ({
                 label: NAME_MAP[uid] || uid,
                 data: data.map(d => d.scores[uid] || null),
@@ -58,7 +72,6 @@
                 mainChart.update('none');
             }
 
-            // Setup Daily Chart
             const lastDate = labels[labels.length - 1].split(' ')[0];
             const dailyData = data.filter(d => d.timestamp.includes(lastDate));
             const dailyLabels = dailyData.map(d => d.timestamp.split(' ').pop());
@@ -86,8 +99,8 @@
         }
 
         function resetZoomAll() {
-            mainChart.resetZoom();
-            dailyChart.resetZoom();
+            if(mainChart) mainChart.resetZoom();
+            if(dailyChart) dailyChart.resetZoom();
         }
 
         updateCharts();
