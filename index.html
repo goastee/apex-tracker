@@ -28,7 +28,6 @@
         .refresh-btn { background-color: #2ecc71; }
         .refresh-btn:hover { background-color: #27ae60; }
         
-        /* Side-by-side layout */
         .charts-wrapper {
             display: flex;
             flex-direction: row;
@@ -116,125 +115,134 @@
         }
 
         async function render() {
-            const res = await fetch('history.json?nocache=' + Date.now());
-            const history = await res.json();
-            
-            if (history && history.length > 0) {
-                document.getElementById('lastUpdate').innerText = `Last data update: ${history[history.length - 1].timestamp}`;
-            }
-
-            const allUIDs = [...new Set(history.flatMap(h => Object.keys(h.scores)))];
-            
-            // ==========================================
-            // CHART 1: MAIN GRAPH DATA PREP
-            // ==========================================
-            const labels = history.map(h => h.timestamp);
-            const allScores = history.flatMap(h => Object.values(h.scores));
-            const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
-            const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
-            
-            const datasets = allUIDs.map((uid, index) => ({
-                label: NAME_MAP[uid] || `Player ${uid}`,
-                data: history.map(h => h.scores[uid] !== undefined ? h.scores[uid] : null),
-                borderColor: THEME_COLORS[index % 7], tension: 0, borderWidth: 2
-            }));
-
-            // ==========================================
-            // CHART 2: DAILY GRAPH DATA PREP
-            // ==========================================
-            let dailyDatasets = [];
-            let dailyLabels = [];
-            
-            if (history.length > 0) {
-                // Safely extract the date (e.g. "05/31")
-                const lastTimestamp = history[history.length - 1].timestamp;
-                const latestDay = lastTimestamp.includes(' ') ? lastTimestamp.split(' ')[0] : lastTimestamp;
+            try {
+                const res = await fetch('history.json?nocache=' + Date.now());
+                const history = await res.json();
                 
-                const todayHistory = history.filter(h => h.timestamp.startsWith(latestDay));
-                
-                // Safely extract just the HH:MM time for the labels
-                dailyLabels = todayHistory.map(h => {
-                    const parts = h.timestamp.split(' ');
-                    return parts.length > 1 ? parts[1] : parts[0];
-                });
+                if (history && history.length > 0) {
+                    document.getElementById('lastUpdate').innerText = `Last data update: ${history[history.length - 1].timestamp}`;
+                }
 
-                allUIDs.forEach((uid, index) => {
-                    const startEntry = todayHistory.find(h => h.scores[uid] !== undefined);
+                const allUIDs = [...new Set(history.flatMap(h => Object.keys(h.scores)))];
+                
+                // ==========================================
+                // CHART 1: MAIN GRAPH DATA PREP
+                // ==========================================
+                const labels = history.map(h => h.timestamp);
+                const allScores = history.flatMap(h => Object.values(h.scores));
+                const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
+                const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
+                
+                const datasets = allUIDs.map((uid, index) => ({
+                    label: NAME_MAP[uid] || `Player ${uid}`,
+                    data: history.map(h => h.scores[uid] !== undefined ? h.scores[uid] : null),
+                    borderColor: THEME_COLORS[index % 7], tension: 0, borderWidth: 2,
+                    spanGaps: true // Crucial: draws line even if a polling minute was missed
+                }));
+
+                // ==========================================
+                // CHART 2: DAILY GRAPH DATA PREP
+                // ==========================================
+                let dailyDatasets = [];
+                let dailyLabels = [];
+                
+                if (history.length > 0) {
+                    const lastTimestamp = history[history.length - 1].timestamp;
                     
-                    if (startEntry) {
-                        const startScore = startEntry.scores[uid];
-                        let scoreMoved = false;
+                    // Safely extract the date part (matches up to the first space or 'T')
+                    const dateMatch = lastTimestamp.match(/^[^ T]+/);
+                    const latestDay = dateMatch ? dateMatch[0] : lastTimestamp;
+                    
+                    const todayHistory = history.filter(h => h.timestamp.startsWith(latestDay));
+                    
+                    // Safely extract just the time for the X-axis labels
+                    dailyLabels = todayHistory.map(h => {
+                        const timeMatch = h.timestamp.match(/[ T](.+)$/);
+                        return timeMatch ? timeMatch[1] : h.timestamp;
+                    });
+
+                    allUIDs.forEach((uid, index) => {
+                        const startEntry = todayHistory.find(h => h.scores[uid] !== undefined);
                         
-                        const dailyData = todayHistory.map(h => {
-                            if (h.scores[uid] !== undefined) {
-                                if (h.scores[uid] !== startScore) scoreMoved = true;
-                                return h.scores[uid] - startScore; 
-                            }
-                            return null;
-                        });
+                        if (startEntry) {
+                            const startScore = startEntry.scores[uid];
+                            let scoreMoved = false;
+                            
+                            const dailyData = todayHistory.map(h => {
+                                if (h.scores[uid] !== undefined) {
+                                    if (h.scores[uid] !== startScore) scoreMoved = true;
+                                    return h.scores[uid] - startScore; 
+                                }
+                                return null;
+                            });
 
-                        // We push EVERYONE to the graph so Chart.js never crashes from an empty array.
-                        // But if they haven't moved RP today, we auto-hide them!
-                        dailyDatasets.push({
-                            label: NAME_MAP[uid] || `Player ${uid}`,
-                            data: dailyData,
-                            borderColor: THEME_COLORS[index % 7], tension: 0, borderWidth: 3,
-                            hidden: !scoreMoved 
-                        });
-                    }
-                });
-            }
-
-            // ==========================================
-            // RENDER LOGIC
-            // ==========================================
-            if (window.apexChart) {
-                window.apexChart.data.labels = labels;
-                datasets.forEach((newDs, i) => { if (window.apexChart.data.datasets[i]) newDs.hidden = !window.apexChart.isDatasetVisible(i); });
-                window.apexChart.data.datasets = datasets;
-                window.apexChart.options.plugins.zoom.limits.y.min = minRP;
-                window.apexChart.options.plugins.zoom.limits.y.max = maxRP;
-                window.apexChart.update('none'); 
-            } else {
-                window.apexChart = new Chart(document.getElementById('myChart'), {
-                    type: 'line', data: { labels, datasets },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: { annotation: { annotations: rankAnnotations }, zoom: { limits: { y: { min: minRP, max: maxRP }, x: { minRange: 5 } }, pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } } },
-                        scales: { y: { min: minRP, max: maxRP, ticks: { color: '#aaa' }, grid: { color: '#252525' } }, x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } } }
-                    }
-                });
-            }
-
-            if (window.dailyChart) {
-                window.dailyChart.data.labels = dailyLabels;
-                
-                // Only respect manual toggles for players who actually moved.
-                // If the user manually clicked someone on/off, preserve that choice.
-                dailyDatasets.forEach((newDs, i) => { 
-                    if (window.dailyChart.data.datasets[i]) {
-                        newDs.hidden = !window.dailyChart.isDatasetVisible(i); 
-                    }
-                });
-                
-                window.dailyChart.data.datasets = dailyDatasets;
-                window.dailyChart.update('none');
-            } else {
-                window.dailyChart = new Chart(document.getElementById('dailyChart'), {
-                    type: 'line', data: { labels: dailyLabels, datasets: dailyDatasets },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: { annotation: { annotations: zeroLineAnnotation }, zoom: { pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } } },
-                        scales: {
-                            y: { 
-                                ticks: { color: '#aaa' }, grid: { color: '#252525' },
-                                suggestedMin: -100, // Forces the graph to give 0 some breathing room
-                                suggestedMax: 100
-                            }, 
-                            x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
+                            dailyDatasets.push({
+                                label: NAME_MAP[uid] || `Player ${uid}`,
+                                data: dailyData,
+                                borderColor: THEME_COLORS[index % 7], tension: 0, borderWidth: 3,
+                                spanGaps: true, // Connects the lines past null gaps
+                                hidden: !scoreMoved 
+                            });
                         }
-                    }
-                });
+                    });
+                }
+
+                // ==========================================
+                // RENDER LOGIC
+                // ==========================================
+                if (window.apexChart) {
+                    window.apexChart.data.labels = labels;
+                    datasets.forEach((newDs, i) => { if (window.apexChart.data.datasets[i]) newDs.hidden = !window.apexChart.isDatasetVisible(i); });
+                    window.apexChart.data.datasets = datasets;
+                    window.apexChart.options.scales.y.suggestedMin = minRP;
+                    window.apexChart.options.scales.y.suggestedMax = maxRP;
+                    window.apexChart.update('none'); 
+                } else {
+                    window.apexChart = new Chart(document.getElementById('myChart'), {
+                        type: 'line', data: { labels, datasets },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            plugins: { 
+                                annotation: { annotations: rankAnnotations }, 
+                                // Zoom constrained to X axis only to fix mobile infinity bug
+                                zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } 
+                            },
+                            scales: { y: { suggestedMin: minRP, suggestedMax: maxRP, ticks: { color: '#aaa' }, grid: { color: '#252525' } }, x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } } }
+                        }
+                    });
+                }
+
+                if (window.dailyChart) {
+                    window.dailyChart.data.labels = dailyLabels;
+                    dailyDatasets.forEach((newDs, i) => { 
+                        if (window.dailyChart.data.datasets[i]) {
+                            newDs.hidden = !window.dailyChart.isDatasetVisible(i); 
+                        }
+                    });
+                    window.dailyChart.data.datasets = dailyDatasets;
+                    window.dailyChart.update('none');
+                } else {
+                    window.dailyChart = new Chart(document.getElementById('dailyChart'), {
+                        type: 'line', data: { labels: dailyLabels, datasets: dailyDatasets },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            plugins: { 
+                                annotation: { annotations: zeroLineAnnotation }, 
+                                zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } 
+                            },
+                            scales: {
+                                y: { 
+                                    ticks: { color: '#aaa' }, grid: { color: '#252525' },
+                                    suggestedMin: -100, 
+                                    suggestedMax: 100
+                                }, 
+                                x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error("Error fetching or rendering data:", error);
             }
         }
         
