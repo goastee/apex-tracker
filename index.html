@@ -13,54 +13,105 @@
         body { 
             background: #121212; color: white; font-family: sans-serif; 
             margin: 0; padding: 10px; display: flex; flex-direction: column; 
-            align-items: center; min-height: 100vh; 
+            align-items: center; 
+            min-height: 100vh; min-height: 100dvh; 
+            box-sizing: border-box;
         }
-        .header { text-align: center; margin-bottom: 10px; }
+        
+        .header { text-align: center; margin-bottom: 5px; flex-shrink: 0; }
         .header h1 { margin: 5px 0 10px 0; }
-        .btn-container { margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; }
+        .btn-container { margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; flex-shrink: 0; }
+        
         button { 
             background: #3498db; color: white; border: none; 
             padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; 
-            font-size: 1rem;
+            font-size: 1rem; transition: background 0.2s;
         }
         button:hover { background: #2980b9; }
+
+        /* --- TAB SYSTEM --- */
+        .tabs { display: flex; gap: 5px; margin-bottom: 15px; background: #1a1a1a; padding: 5px; border-radius: 8px; }
+        .tab-btn { background: transparent; color: #aaa; }
+        .tab-btn.active { background: #2ecc71; color: white; }
+        .tab-btn:hover:not(.active) { background: #333; }
         
+        .tab-content { display: none; width: 100%; flex: 1; flex-direction: column; }
+        .tab-content.active { display: flex; }
+        
+        /* --- GRAPHS --- */
         .charts-container { 
             display: flex; width: 100%; gap: 20px; flex-wrap: wrap; 
-            padding: 0 10px; box-sizing: border-box; 
+            padding: 0 10px; box-sizing: border-box; flex: 1; 
         }
-        
         .chart-wrapper { 
-            flex: 1 1 600px; height: 75vh; background: #1a1a1a; 
+            flex: 1 1 600px; background: #1a1a1a; 
             padding: 15px; border-radius: 8px; position: relative; 
+            min-height: 500px; 
         }
+
+        /* --- SYNERGY PANEL --- */
+        .synergy-container {
+            width: 100%; max-width: 800px; margin: 0 auto;
+            background: #1a1a1a; border-radius: 8px; padding: 20px;
+            box-sizing: border-box;
+        }
+        .synergy-table { width: 100%; border-collapse: collapse; text-align: left; }
+        .synergy-table th, .synergy-table td { padding: 12px; border-bottom: 1px solid #333; }
+        .synergy-table th { color: #888; font-size: 0.9rem; text-transform: uppercase; }
+        .synergy-table tr:hover { background: #222; }
+        .positive { color: #2ecc71; font-weight: bold; }
+        .negative { color: #e74c3c; font-weight: bold; }
         
-        /* --- MOBILE OVERRIDES --- */
         @media (max-width: 900px) {
             body { padding: 5px; }
-            .header h1 { font-size: 1.2rem; margin-bottom: 5px; } /* Shrink title */
-            .btn-container { margin-bottom: 10px; gap: 5px; } /* Tighter button spacing */
-            button { padding: 6px 12px; font-size: 0.85rem; } /* Shrink buttons */
-            
+            .header h1 { font-size: 1.2rem; margin-bottom: 5px; } 
+            .btn-container { margin-bottom: 10px; gap: 5px; } 
+            button { padding: 6px 12px; font-size: 0.85rem; } 
+            .tabs { margin-bottom: 10px; }
             .charts-container { flex-direction: column; gap: 10px; padding: 0; }
-            
-            /* Force a solid pixel height on mobile so the graph isn't squished by the legend */
-            .chart-wrapper { flex: 1 1 100%; height: 450px; padding: 10px; } 
+            .chart-wrapper { flex: 1; width: 100%; min-height: 0; padding: 10px; } 
+            .synergy-table th, .synergy-table td { padding: 8px 4px; font-size: 0.9rem; }
         }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Squad Live Performance</h1>
-        <div class="btn-container">
-            <button onclick="updateCharts()">Refresh Data</button>
-            <button onclick="resetZoomAll()">Reset Zoom</button>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('graphs')">Live Graphs</button>
+            <button class="tab-btn" onclick="switchTab('synergy')">Best Matchups</button>
         </div>
     </div>
 
-    <div class="charts-container">
-        <div class="chart-wrapper"><canvas id="mainChart"></canvas></div>
-        <div class="chart-wrapper"><canvas id="dailyChart"></canvas></div>
+    <div id="graphs" class="tab-content active">
+        <div class="btn-container">
+            <button onclick="updateData()">Refresh Data</button>
+            <button onclick="resetZoomAll()">Reset Zoom</button>
+        </div>
+        <div class="charts-container">
+            <div class="chart-wrapper"><canvas id="mainChart"></canvas></div>
+            <div class="chart-wrapper"><canvas id="dailyChart"></canvas></div>
+        </div>
+    </div>
+
+    <div id="synergy" class="tab-content">
+        <div class="btn-container">
+            <button onclick="updateData()">Refresh Data</button>
+        </div>
+        <div class="synergy-container">
+            <table class="synergy-table">
+                <thead>
+                    <tr>
+                        <th>Duo</th>
+                        <th>Matches</th>
+                        <th>Net RP</th>
+                        <th>Avg RP/Match</th>
+                    </tr>
+                </thead>
+                <tbody id="synergy-body">
+                    </tbody>
+            </table>
+        </div>
     </div>
 
     <script>
@@ -71,16 +122,21 @@
         };
         const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22'];
 
+        // --- UI LOGIC ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+        }
+
         // --- ANNOTATION SETUP ---
         const RANK_THRESHOLDS = {
-            "Bronze": { rp: 1000, color: '#cd7f32' },
-            "Silver": { rp: 3000, color: '#bdc3c7' },
-            "Gold": { rp: 5400, color: '#f1c40f' },
-            "Platinum": { rp: 8200, color: '#1abc9c' },
-            "Diamond": { rp: 11400, color: '#3498db' },
-            "Master": { rp: 15000, color: '#9b59b6' }
+            "Bronze": { rp: 1000, color: '#cd7f32' }, "Silver": { rp: 3000, color: '#bdc3c7' },
+            "Gold": { rp: 5400, color: '#f1c40f' }, "Platinum": { rp: 8200, color: '#1abc9c' },
+            "Diamond": { rp: 11400, color: '#3498db' }, "Master": { rp: 15000, color: '#9b59b6' }
         };
-
         const rankAnnotations = {};
         Object.keys(RANK_THRESHOLDS).forEach(rank => {
             rankAnnotations[rank] = {
@@ -89,7 +145,6 @@
                 label: { display: true, content: rank, position: 'start', backgroundColor: 'rgba(18, 18, 18, 0.8)', color: RANK_THRESHOLDS[rank].color, font: { size: 12, weight: 'bold' } }
             };
         });
-
         const zeroLineAnnotation = {
             zero: {
                 type: 'line', yMin: 0, yMax: 0, borderColor: 'rgba(255, 255, 255, 0.5)', borderWidth: 2,
@@ -98,30 +153,95 @@
         };
 
         function getZoomOptions() {
-            return {
-                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' },
-                pan: { enabled: true, mode: 'xy' }
-            };
+            return { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }, pan: { enabled: true, mode: 'xy' } };
         }
 
-        async function updateCharts() {
+        // --- SYNERGY CALCULATOR ---
+        function processSynergy(data) {
+            const lastKnown = {};
+            const pairs = {};
+
+            data.forEach(entry => {
+                const scores = entry.scores;
+                const currentUIDs = Object.keys(scores);
+                const deltas = {};
+
+                // Calculate RP change for everyone in this timestamp
+                currentUIDs.forEach(uid => {
+                    if (lastKnown[uid] !== undefined) {
+                        deltas[uid] = scores[uid] - lastKnown[uid];
+                    }
+                    lastKnown[uid] = scores[uid];
+                });
+
+                // FILTER FIX: Omit anyone whose score delta was exactly 0 (prevents old history from polluting data)
+                const activeUIDs = currentUIDs.filter(uid => deltas[uid] !== undefined && deltas[uid] !== 0);
+
+                // Generate combinations
+                for (let i = 0; i < activeUIDs.length; i++) {
+                    for (let j = i + 1; j < activeUIDs.length; j++) {
+                        const uid1 = activeUIDs[i];
+                        const uid2 = activeUIDs[j];
+                        
+                        // Sort so "A|B" is identical to "B|A"
+                        const pairKey = [uid1, uid2].sort().join('|');
+                        
+                        if (!pairs[pairKey]) {
+                            pairs[pairKey] = { uids: [uid1, uid2], matches: 0, netRP: 0 };
+                        }
+                        
+                        pairs[pairKey].matches += 1;
+                        // Add their combined average RP movement for this match
+                        pairs[pairKey].netRP += (deltas[uid1] + deltas[uid2]) / 2; 
+                    }
+                }
+            });
+
+            // Convert to array and sort by most profitable duos
+            const sortedPairs = Object.values(pairs).sort((a, b) => b.netRP - a.netRP);
+            
+            const tbody = document.getElementById('synergy-body');
+            tbody.innerHTML = '';
+            
+            sortedPairs.forEach(pair => {
+                // Hide pairs that only played 1 match (likely a coincidence or API glitch)
+                if (pair.matches < 2) return; 
+
+                const n1 = NAME_MAP[pair.uids[0]] || pair.uids[0];
+                const n2 = NAME_MAP[pair.uids[1]] || pair.uids[1];
+                const avg = (pair.netRP / pair.matches).toFixed(1);
+                const netClass = pair.netRP >= 0 ? 'positive' : 'negative';
+                const sign = pair.netRP > 0 ? '+' : '';
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${n1}</strong> & <strong>${n2}</strong></td>
+                        <td>${pair.matches}</td>
+                        <td class="${netClass}">${sign}${Math.round(pair.netRP)}</td>
+                        <td class="${netClass}">${sign}${avg}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // --- MAIN RENDERER ---
+        async function updateData() {
             try {
                 const res = await fetch('history.json?nocache=' + Date.now());
                 const data = await res.json();
-                
                 if (!data || data.length === 0) return;
 
+                // 1. Process Synergy
+                processSynergy(data);
+
+                // 2. Process Charts
                 const labels = data.map(d => d.timestamp);
                 const uids = [...new Set(data.flatMap(d => Object.keys(d.scores)))];
                 
-                // Calculate Min/Max for main chart padding
                 const allScores = data.flatMap(d => Object.values(d.scores));
                 const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
                 const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
 
-                // ==========================================
-                // MAIN CHART SETUP
-                // ==========================================
                 const datasets = uids.map((uid, i) => ({
                     label: NAME_MAP[uid] || uid,
                     data: data.map(d => d.scores[uid] !== undefined ? d.scores[uid] : null),
@@ -134,14 +254,8 @@
                         type: 'line', data: { labels, datasets },
                         options: { 
                             responsive: true, maintainAspectRatio: false, 
-                            plugins: { 
-                                zoom: getZoomOptions(),
-                                annotation: { annotations: rankAnnotations }
-                            },
-                            scales: {
-                                y: { suggestedMin: minRP, suggestedMax: maxRP, ticks: { color: '#aaa' }, grid: { color: '#252525' } },
-                                x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
-                            }
+                            plugins: { zoom: getZoomOptions(), annotation: { annotations: rankAnnotations } },
+                            scales: { y: { suggestedMin: minRP, suggestedMax: maxRP, ticks: { color: '#aaa' }, grid: { color: '#252525' } }, x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } } }
                         }
                     });
                 } else {
@@ -153,13 +267,9 @@
                     mainChart.update('none');
                 }
 
-                // ==========================================
-                // DAILY CHART SETUP
-                // ==========================================
                 const lastDate = labels[labels.length - 1].split(' ')[0];
                 const dailyData = data.filter(d => d.timestamp.includes(lastDate));
                 const dailyLabels = dailyData.map(d => d.timestamp.split(' ').pop());
-                
                 const dailyDatasets = [];
                 
                 uids.forEach((uid, i) => {
@@ -167,7 +277,6 @@
                     if (startEntry) {
                         const startScore = startEntry.scores[uid];
                         let scoreMoved = false;
-                        
                         const dData = dailyData.map(d => {
                             if (d.scores[uid] !== undefined) {
                                 if (d.scores[uid] !== startScore) scoreMoved = true;
@@ -175,13 +284,9 @@
                             }
                             return null;
                         });
-
                         dailyDatasets.push({
-                            label: NAME_MAP[uid] || uid,
-                            data: dData,
-                            borderColor: COLORS[i % COLORS.length],
-                            spanGaps: true,
-                            hidden: !scoreMoved // Auto-hide if they flatlined today
+                            label: NAME_MAP[uid] || uid, data: dData,
+                            borderColor: COLORS[i % COLORS.length], spanGaps: true, hidden: !scoreMoved 
                         });
                     }
                 });
@@ -191,24 +296,13 @@
                         type: 'line', data: { labels: dailyLabels, datasets: dailyDatasets },
                         options: { 
                             responsive: true, maintainAspectRatio: false, 
-                            plugins: { 
-                                zoom: getZoomOptions(),
-                                annotation: { annotations: zeroLineAnnotation }
-                            },
-                            scales: {
-                                y: { suggestedMin: -100, suggestedMax: 100, ticks: { color: '#aaa' }, grid: { color: '#252525' } },
-                                x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } }
-                            }
+                            plugins: { zoom: getZoomOptions(), annotation: { annotations: zeroLineAnnotation } },
+                            scales: { y: { suggestedMin: -100, suggestedMax: 100, ticks: { color: '#aaa' }, grid: { color: '#252525' } }, x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } } }
                         }
                     });
                 } else {
                     dailyChart.data.labels = dailyLabels;
-                    // Preserve manual toggles, otherwise rely on the auto-hide logic
-                    dailyDatasets.forEach((newDs, i) => { 
-                        if (dailyChart.data.datasets[i]) {
-                            newDs.hidden = !dailyChart.isDatasetVisible(i); 
-                        }
-                    });
+                    dailyDatasets.forEach((newDs, i) => { if (dailyChart.data.datasets[i]) newDs.hidden = !dailyChart.isDatasetVisible(i); });
                     dailyChart.data.datasets = dailyDatasets;
                     dailyChart.update('none');
                 }
@@ -222,8 +316,8 @@
             if(dailyChart) dailyChart.resetZoom();
         }
 
-        updateCharts();
-        setInterval(updateCharts, 30000);
+        updateData();
+        setInterval(updateData, 30000);
     </script>
 </body>
 </html>
