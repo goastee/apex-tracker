@@ -162,7 +162,6 @@
             document.getElementById(tabId).classList.add('active');
             event.target.classList.add('active');
             
-            // Trigger a resize to fix Chart.js canvas sizing bug when hidden
             window.dispatchEvent(new Event('resize'));
         }
 
@@ -209,7 +208,6 @@
                 });
 
                 const activeUIDs = currentUIDs.filter(uid => deltas[uid] !== undefined && deltas[uid] !== 0);
-
                 const currentTrios = [];
 
                 // 1. Generate and Register Trios
@@ -376,10 +374,23 @@
                     dailyChart.update('none');
                 }
 
-                // --- TAB 2: SINGLE PLAYER CHART ---
+                // --- TAB 2: SINGLE PLAYER CHART (DEDUPLICATED) ---
                 const selectedUID = document.getElementById('playerSelect').value;
                 if (selectedUID) {
-                    const singleFilteredData = data.filter(d => d.scores[selectedUID] !== undefined);
+                    const singleFilteredData = [];
+                    let prevScore = null;
+                    
+                    // Only collect snapshots where their score actually changed
+                    data.forEach(d => {
+                        const currentScore = d.scores[selectedUID];
+                        if (currentScore !== undefined) {
+                            if (prevScore === null || currentScore !== prevScore) {
+                                singleFilteredData.push(d);
+                                prevScore = currentScore;
+                            }
+                        }
+                    });
+
                     const singleLabels = singleFilteredData.map(d => d.timestamp);
                     const singleDataPoints = singleFilteredData.map(d => d.scores[selectedUID]);
                     
