@@ -61,6 +61,8 @@
         .synergy-table tr:hover { background: #222; }
         .positive { color: #2ecc71; font-weight: bold; }
         .negative { color: #e74c3c; font-weight: bold; }
+        .trio-tag { color: #f1c40f; font-size: 0.75rem; margin-left: 5px; vertical-align: middle; }
+        .duo-tag { color: #bdc3c7; font-size: 0.75rem; margin-left: 5px; vertical-align: middle; }
         
         @media (max-width: 900px) {
             body { padding: 5px; }
@@ -102,7 +104,7 @@
             <table class="synergy-table">
                 <thead>
                     <tr>
-                        <th>Duo</th>
+                        <th>Team</th>
                         <th>Matches</th>
                         <th>Net RP</th>
                         <th>Avg RP/Match</th>
@@ -156,10 +158,10 @@
             return { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }, pan: { enabled: true, mode: 'xy' } };
         }
 
-        // --- SYNERGY CALCULATOR ---
+        // --- SYNERGY CALCULATOR (NOW WITH TRIOS) ---
         function processSynergy(data) {
             const lastKnown = {};
-            const pairs = {};
+            const groups = {};
 
             data.forEach(entry => {
                 const scores = entry.scores;
@@ -174,50 +176,54 @@
                     lastKnown[uid] = scores[uid];
                 });
 
-                // FILTER FIX: Omit anyone whose score delta was exactly 0 (prevents old history from polluting data)
+                // Ignore legacy 0-change data
                 const activeUIDs = currentUIDs.filter(uid => deltas[uid] !== undefined && deltas[uid] !== 0);
 
-                // Generate combinations
+                // Generate Combinations (Both Duos and Trios)
                 for (let i = 0; i < activeUIDs.length; i++) {
                     for (let j = i + 1; j < activeUIDs.length; j++) {
                         const uid1 = activeUIDs[i];
                         const uid2 = activeUIDs[j];
                         
-                        // Sort so "A|B" is identical to "B|A"
-                        const pairKey = [uid1, uid2].sort().join('|');
-                        
-                        if (!pairs[pairKey]) {
-                            pairs[pairKey] = { uids: [uid1, uid2], matches: 0, netRP: 0 };
+                        // Register the Duo
+                        const duoKey = [uid1, uid2].sort().join('|');
+                        if (!groups[duoKey]) groups[duoKey] = { uids: [uid1, uid2], type: 'Duo', matches: 0, netRP: 0 };
+                        groups[duoKey].matches += 1;
+                        groups[duoKey].netRP += (deltas[uid1] + deltas[uid2]) / 2; 
+
+                        // Register the Trios (if a 3rd player exists in this timestamp)
+                        for (let k = j + 1; k < activeUIDs.length; k++) {
+                            const uid3 = activeUIDs[k];
+                            const trioKey = [uid1, uid2, uid3].sort().join('|');
+                            if (!groups[trioKey]) groups[trioKey] = { uids: [uid1, uid2, uid3], type: 'Trio', matches: 0, netRP: 0 };
+                            groups[trioKey].matches += 1;
+                            groups[trioKey].netRP += (deltas[uid1] + deltas[uid2] + deltas[uid3]) / 3;
                         }
-                        
-                        pairs[pairKey].matches += 1;
-                        // Add their combined average RP movement for this match
-                        pairs[pairKey].netRP += (deltas[uid1] + deltas[uid2]) / 2; 
                     }
                 }
             });
 
-            // Convert to array and sort by most profitable duos
-            const sortedPairs = Object.values(pairs).sort((a, b) => b.netRP - a.netRP);
+            // Sort by most profitable groups
+            const sortedGroups = Object.values(groups).sort((a, b) => b.netRP - a.netRP);
             
             const tbody = document.getElementById('synergy-body');
             tbody.innerHTML = '';
             
-            sortedPairs.forEach(pair => {
-                // Hide pairs that only played 1 match (likely a coincidence or API glitch)
-                if (pair.matches < 2) return; 
+            sortedGroups.forEach(group => {
+                if (group.matches < 2) return; // Hide coincidences
 
-                const n1 = NAME_MAP[pair.uids[0]] || pair.uids[0];
-                const n2 = NAME_MAP[pair.uids[1]] || pair.uids[1];
-                const avg = (pair.netRP / pair.matches).toFixed(1);
-                const netClass = pair.netRP >= 0 ? 'positive' : 'negative';
-                const sign = pair.netRP > 0 ? '+' : '';
+                // Map UIDs to names and join them with ampersands
+                const teamNames = group.uids.map(uid => `<strong>${NAME_MAP[uid] || uid}</strong>`).join(' & ');
+                const avg = (group.netRP / group.matches).toFixed(1);
+                const netClass = group.netRP >= 0 ? 'positive' : 'negative';
+                const sign = group.netRP > 0 ? '+' : '';
+                const tag = group.type === 'Trio' ? '<span class="trio-tag">(TRIO)</span>' : '<span class="duo-tag">(DUO)</span>';
 
                 tbody.innerHTML += `
                     <tr>
-                        <td><strong>${n1}</strong> & <strong>${n2}</strong></td>
-                        <td>${pair.matches}</td>
-                        <td class="${netClass}">${sign}${Math.round(pair.netRP)}</td>
+                        <td>${teamNames} ${tag}</td>
+                        <td>${group.matches}</td>
+                        <td class="${netClass}">${sign}${Math.round(group.netRP)}</td>
                         <td class="${netClass}">${sign}${avg}</td>
                     </tr>
                 `;
@@ -231,10 +237,8 @@
                 const data = await res.json();
                 if (!data || data.length === 0) return;
 
-                // 1. Process Synergy
                 processSynergy(data);
 
-                // 2. Process Charts
                 const labels = data.map(d => d.timestamp);
                 const uids = [...new Set(data.flatMap(d => Object.keys(d.scores)))];
                 
