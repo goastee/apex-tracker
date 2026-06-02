@@ -20,7 +20,7 @@
         
         .header { text-align: center; margin-bottom: 5px; flex-shrink: 0; }
         .header h1 { margin: 5px 0 10px 0; }
-        .btn-container { margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; flex-shrink: 0; }
+        .btn-container { margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; flex-shrink: 0; flex-wrap: wrap; }
         
         button { 
             background: #3498db; color: white; border: none; 
@@ -29,8 +29,16 @@
         }
         button:hover { background: #2980b9; }
 
+        /* Custom styling for the player dropdown */
+        select {
+            background: #333; color: white; border: none; 
+            padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; 
+            font-size: 1rem; outline: none;
+        }
+        select:hover { background: #444; }
+
         /* --- TAB SYSTEM --- */
-        .tabs { display: flex; gap: 5px; margin-bottom: 15px; background: #1a1a1a; padding: 5px; border-radius: 8px; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 15px; background: #1a1a1a; padding: 5px; border-radius: 8px; flex-wrap: wrap; justify-content: center; }
         .tab-btn { background: transparent; color: #aaa; }
         .tab-btn.active { background: #2ecc71; color: white; }
         .tab-btn:hover:not(.active) { background: #333; }
@@ -68,7 +76,7 @@
             body { padding: 5px; }
             .header h1 { font-size: 1.2rem; margin-bottom: 5px; } 
             .btn-container { margin-bottom: 10px; gap: 5px; } 
-            button { padding: 6px 12px; font-size: 0.85rem; } 
+            button, select { padding: 6px 12px; font-size: 0.85rem; } 
             .tabs { margin-bottom: 10px; }
             .charts-container { flex-direction: column; gap: 10px; padding: 0; }
             .chart-wrapper { flex: 1; width: 100%; min-height: 0; padding: 10px; } 
@@ -81,6 +89,7 @@
         <h1>Squad Live Performance</h1>
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('graphs')">Live Graphs</button>
+            <button class="tab-btn" onclick="switchTab('singlePlayer')">Player Focus</button>
             <button class="tab-btn" onclick="switchTab('synergy')">Best Matchups</button>
         </div>
     </div>
@@ -93,6 +102,18 @@
         <div class="charts-container">
             <div class="chart-wrapper"><canvas id="mainChart"></canvas></div>
             <div class="chart-wrapper"><canvas id="dailyChart"></canvas></div>
+        </div>
+    </div>
+
+    <div id="singlePlayer" class="tab-content">
+        <div class="btn-container">
+            <select id="playerSelect" onchange="updateData()">
+                </select>
+            <button onclick="updateData()">Refresh Data</button>
+            <button onclick="resetZoomAll()">Reset Zoom</button>
+        </div>
+        <div class="charts-container">
+            <div class="chart-wrapper"><canvas id="singleChart"></canvas></div>
         </div>
     </div>
 
@@ -117,7 +138,7 @@
     </div>
 
     <script>
-        let mainChart, dailyChart;
+        let mainChart, dailyChart, singleChart;
         const NAME_MAP = {
             "2292013299": "Luci", "1011944913282": "Saywhat", "1012860147038": "Talon", 
             "1011877813719": "Anubis", "2433485727": "trevor", "1004525474326": "mamapunk"
@@ -131,6 +152,9 @@
             
             document.getElementById(tabId).classList.add('active');
             event.target.classList.add('active');
+            
+            // Trigger a resize to fix Chart.js canvas sizing bug when hidden
+            window.dispatchEvent(new Event('resize'));
         }
 
         // --- ANNOTATION SETUP ---
@@ -158,7 +182,7 @@
             return { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }, pan: { enabled: true, mode: 'xy' } };
         }
 
-        // --- SYNERGY CALCULATOR (NOW WITH TRIOS) ---
+        // --- SYNERGY CALCULATOR ---
         function processSynergy(data) {
             const lastKnown = {};
             const groups = {};
@@ -168,7 +192,6 @@
                 const currentUIDs = Object.keys(scores);
                 const deltas = {};
 
-                // Calculate RP change for everyone in this timestamp
                 currentUIDs.forEach(uid => {
                     if (lastKnown[uid] !== undefined) {
                         deltas[uid] = scores[uid] - lastKnown[uid];
@@ -176,22 +199,18 @@
                     lastKnown[uid] = scores[uid];
                 });
 
-                // Ignore legacy 0-change data
                 const activeUIDs = currentUIDs.filter(uid => deltas[uid] !== undefined && deltas[uid] !== 0);
 
-                // Generate Combinations (Both Duos and Trios)
                 for (let i = 0; i < activeUIDs.length; i++) {
                     for (let j = i + 1; j < activeUIDs.length; j++) {
                         const uid1 = activeUIDs[i];
                         const uid2 = activeUIDs[j];
                         
-                        // Register the Duo
                         const duoKey = [uid1, uid2].sort().join('|');
                         if (!groups[duoKey]) groups[duoKey] = { uids: [uid1, uid2], type: 'Duo', matches: 0, netRP: 0 };
                         groups[duoKey].matches += 1;
                         groups[duoKey].netRP += (deltas[uid1] + deltas[uid2]) / 2; 
 
-                        // Register the Trios (if a 3rd player exists in this timestamp)
                         for (let k = j + 1; k < activeUIDs.length; k++) {
                             const uid3 = activeUIDs[k];
                             const trioKey = [uid1, uid2, uid3].sort().join('|');
@@ -203,16 +222,13 @@
                 }
             });
 
-            // Sort by most profitable groups
             const sortedGroups = Object.values(groups).sort((a, b) => b.netRP - a.netRP);
-            
             const tbody = document.getElementById('synergy-body');
             tbody.innerHTML = '';
             
             sortedGroups.forEach(group => {
-                if (group.matches < 2) return; // Hide coincidences
+                if (group.matches < 2) return; 
 
-                // Map UIDs to names and join them with ampersands
                 const teamNames = group.uids.map(uid => `<strong>${NAME_MAP[uid] || uid}</strong>`).join(' & ');
                 const avg = (group.netRP / group.matches).toFixed(1);
                 const netClass = group.netRP >= 0 ? 'positive' : 'negative';
@@ -230,6 +246,19 @@
             });
         }
 
+        // --- DROPDOWN POPULATOR ---
+        function populateDropdown(uids) {
+            const select = document.getElementById('playerSelect');
+            if (select.options.length === 0) {
+                uids.forEach(uid => {
+                    let opt = document.createElement('option');
+                    opt.value = uid;
+                    opt.textContent = NAME_MAP[uid] || uid;
+                    select.appendChild(opt);
+                });
+            }
+        }
+
         // --- MAIN RENDERER ---
         async function updateData() {
             try {
@@ -242,6 +271,9 @@
                 const labels = data.map(d => d.timestamp);
                 const uids = [...new Set(data.flatMap(d => Object.keys(d.scores)))];
                 
+                populateDropdown(uids);
+
+                // --- TAB 1: MAIN CHARTS ---
                 const allScores = data.flatMap(d => Object.values(d.scores));
                 const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
                 const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
@@ -271,6 +303,7 @@
                     mainChart.update('none');
                 }
 
+                // --- TAB 1: DAILY CHART ---
                 const lastDate = labels[labels.length - 1].split(' ')[0];
                 const dailyData = data.filter(d => d.timestamp.includes(lastDate));
                 const dailyLabels = dailyData.map(d => d.timestamp.split(' ').pop());
@@ -310,6 +343,51 @@
                     dailyChart.data.datasets = dailyDatasets;
                     dailyChart.update('none');
                 }
+
+                // --- TAB 2: SINGLE PLAYER CHART ---
+                const selectedUID = document.getElementById('playerSelect').value;
+                if (selectedUID) {
+                    // Filter to only timestamps where this player existed
+                    const singleFilteredData = data.filter(d => d.scores[selectedUID] !== undefined);
+                    const singleLabels = singleFilteredData.map(d => d.timestamp);
+                    const singleDataPoints = singleFilteredData.map(d => d.scores[selectedUID]);
+                    
+                    const playerIndex = uids.indexOf(selectedUID);
+                    const playerColor = playerIndex >= 0 ? COLORS[playerIndex % COLORS.length] : '#3498db';
+
+                    const singleMinRP = singleDataPoints.length ? Math.max(0, Math.min(...singleDataPoints) - 100) : 0;
+                    const singleMaxRP = singleDataPoints.length ? Math.max(...singleDataPoints) + 100 : 20000;
+
+                    if (!singleChart) {
+                        singleChart = new Chart(document.getElementById('singleChart'), {
+                            type: 'line', 
+                            data: { 
+                                labels: singleLabels, 
+                                datasets: [{
+                                    label: NAME_MAP[selectedUID] || selectedUID,
+                                    data: singleDataPoints,
+                                    borderColor: playerColor,
+                                    borderWidth: 3, // Thicker line for focus
+                                    spanGaps: true
+                                }] 
+                            },
+                            options: { 
+                                responsive: true, maintainAspectRatio: false, 
+                                plugins: { zoom: getZoomOptions(), annotation: { annotations: rankAnnotations } },
+                                scales: { y: { suggestedMin: singleMinRP, suggestedMax: singleMaxRP, ticks: { color: '#aaa' }, grid: { color: '#252525' } }, x: { ticks: { color: '#aaa' }, grid: { color: '#252525' } } }
+                            }
+                        });
+                    } else {
+                        singleChart.data.labels = singleLabels;
+                        singleChart.data.datasets[0].label = NAME_MAP[selectedUID] || selectedUID;
+                        singleChart.data.datasets[0].data = singleDataPoints;
+                        singleChart.data.datasets[0].borderColor = playerColor;
+                        singleChart.options.scales.y.suggestedMin = singleMinRP;
+                        singleChart.options.scales.y.suggestedMax = singleMaxRP;
+                        singleChart.update('none');
+                    }
+                }
+
             } catch (error) {
                 console.error("Error fetching or rendering data:", error);
             }
@@ -318,6 +396,7 @@
         function resetZoomAll() {
             if(mainChart) mainChart.resetZoom();
             if(dailyChart) dailyChart.resetZoom();
+            if(singleChart) singleChart.resetZoom();
         }
 
         updateData();
