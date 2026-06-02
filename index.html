@@ -4,13 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VIP Apex Tracker</title>
-    <!-- Core Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Hammer.js for panning -->
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
-    <!-- Zoom Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
-    <!-- Annotation Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     
     <style>
@@ -60,7 +56,6 @@
         .tab-btn.active { background: #2ecc71; color: white; }
         .tab-btn:hover:not(.active) { background: #333; }
         
-        /* Removed the max-width from here so charts can span full screen */
         .tab-content { display: none; width: 100%; flex: 1; flex-direction: column; }
         .tab-content.active { display: flex; }
         
@@ -115,7 +110,6 @@
         <button class="tab-btn" onclick="switchTab('synergy')">Best Matchups</button>
     </div>
 
-    <!-- TAB 1: GRAPHS -->
     <div id="graphs" class="tab-content active">
         <div class="btn-container">
             <button onclick="updateData()">Refresh Data</button>
@@ -127,9 +121,7 @@
         </div>
     </div>
 
-    <!-- TAB 2: SINGLE PLAYER FOCUS -->
     <div id="singlePlayer" class="tab-content">
-        <!-- PLAYER SPECIFIC STATS BLURB -->
         <div class="stats-blurb">
             <div class="stat-item">
                 <div class="stat-label">Matches</div>
@@ -155,8 +147,7 @@
 
         <div class="btn-container">
             <select id="playerSelect" onchange="updateData()">
-                <!-- Auto-populated via JS -->
-            </select>
+                </select>
             <button onclick="updateData()">Refresh Data</button>
             <button onclick="resetZoomAll()">Reset Zoom</button>
         </div>
@@ -165,7 +156,6 @@
         </div>
     </div>
 
-    <!-- TAB 3: SYNERGY -->
     <div id="synergy" class="tab-content">
         <div class="btn-container">
             <button onclick="updateData()">Refresh Data</button>
@@ -181,8 +171,7 @@
                     </tr>
                 </thead>
                 <tbody id="synergy-body">
-                    <!-- Populated by JS -->
-                </tbody>
+                    </tbody>
             </table>
         </div>
     </div>
@@ -258,16 +247,14 @@
             // 3. Best / Worst Team for this specific player
             let bestText = "N/A", worstText = "N/A";
             
-            // Only look at groups that include the selected player and have at least 2 matches
             const playerGroups = sortedGroups.filter(g => g.uids.includes(selectedUID) && g.matches >= 2);
             
             if (playerGroups.length > 0) {
-                // Sort by average net RP per match
                 const byAvg = [...playerGroups].sort((a, b) => (b.netRP / b.matches) - (a.netRP / a.matches));
                 
                 const formatTeammates = (group) => {
                     return group.uids
-                        .filter(uid => uid !== selectedUID) // Remove their own name
+                        .filter(uid => uid !== selectedUID)
                         .map(uid => NAME_MAP[uid] || uid)
                         .join(' & ');
                 };
@@ -362,7 +349,7 @@
                 `;
             });
 
-            return sortedGroups; // Pass this data to the Stats Blurb
+            return sortedGroups; 
         }
 
         function populateDropdown(uids) {
@@ -428,7 +415,8 @@
                         let scoreMoved = false;
                         const dData = dailyData.map(d => {
                             if (d.scores[uid] !== undefined) {
-                                if (d.scores[uid] !== startScore) score.Moved = true;
+                                // FIXED TYPO HERE
+                                if (d.scores[uid] !== startScore) scoreMoved = true;
                                 return d.scores[uid] - startScore;
                             }
                             return null;
@@ -464,7 +452,6 @@
                         }
                     });
 
-                    // Update the stats blurb at the top of the single player tab
                     updateSinglePlayerStats(singleFilteredData, selectedUID, sortedGroups);
 
                     const singleLabels = singleFilteredData.map(d => d.timestamp);
