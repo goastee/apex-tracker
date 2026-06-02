@@ -4,9 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VIP Apex Tracker</title>
+    <!-- Core Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Hammer.js for panning -->
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <!-- Zoom Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <!-- Annotation Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     
     <style>
@@ -24,7 +28,7 @@
         /* --- STATS BLURB --- */
         .stats-blurb {
             display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; 
-            background: #1a1a1a; padding: 15px; border-radius: 8px; margin-bottom: 15px; width: 100%; max-width: 900px;
+            background: #1a1a1a; padding: 15px; border-radius: 8px; margin-bottom: 15px; width: 100%;
         }
         .stat-item {
             text-align: center; background: #222; padding: 10px; border-radius: 5px; flex: 1 1 130px;
@@ -55,25 +59,23 @@
         .tab-btn.active { background: #2ecc71; color: white; }
         .tab-btn:hover:not(.active) { background: #333; }
         
-        .tab-content { display: none; width: 100%; flex: 1; flex-direction: column; }
+        .tab-content { display: none; width: 100%; flex: 1; flex-direction: column; max-width: 1000px; }
         .tab-content.active { display: flex; }
         
         /* --- GRAPHS --- */
         .charts-container { 
             display: flex; width: 100%; gap: 20px; flex-wrap: wrap; 
-            padding: 0 10px; box-sizing: border-box; flex: 1; 
+            padding: 0; box-sizing: border-box; flex: 1; 
         }
         .chart-wrapper { 
             flex: 1 1 600px; background: #1a1a1a; 
             padding: 15px; border-radius: 8px; position: relative; 
-            min-height: 500px; 
+            min-height: 500px; width: 100%;
         }
 
         /* --- SYNERGY PANEL --- */
         .synergy-container {
-            width: 100%; max-width: 800px; margin: 0 auto;
-            background: #1a1a1a; border-radius: 8px; padding: 20px;
-            box-sizing: border-box;
+            width: 100%; background: #1a1a1a; border-radius: 8px; padding: 20px; box-sizing: border-box;
         }
         .synergy-table { width: 100%; border-collapse: collapse; text-align: left; }
         .synergy-table th, .synergy-table td { padding: 12px; border-bottom: 1px solid #333; }
@@ -93,8 +95,8 @@
             .btn-container { margin-bottom: 10px; gap: 5px; } 
             button, select { padding: 6px 12px; font-size: 0.85rem; } 
             .tabs { margin-bottom: 10px; }
-            .charts-container { flex-direction: column; gap: 10px; padding: 0; }
-            .chart-wrapper { flex: 1; width: 100%; min-height: 0; padding: 10px; } 
+            .charts-container { flex-direction: column; gap: 10px; }
+            .chart-wrapper { flex: 1; min-height: 0; padding: 10px; } 
             .synergy-table th, .synergy-table td { padding: 8px 4px; font-size: 0.85rem; }
         }
     </style>
@@ -104,35 +106,13 @@
         <h1>VIP Apex Tracker</h1>
     </div>
 
-    <div class="stats-blurb">
-        <div class="stat-item">
-            <div class="stat-label">Total Matches</div>
-            <div class="stat-value" id="stat-matches">-</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-label">Avg Games / Session</div>
-            <div class="stat-value" id="stat-avg-games">-</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-label">Avg RP / Session</div>
-            <div class="stat-value" id="stat-avg-rp">-</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-label">Top Team</div>
-            <div class="stat-value" id="stat-best-team" style="font-size: 0.9rem;">-</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-label">Needs Work</div>
-            <div class="stat-value" id="stat-worst-team" style="font-size: 0.9rem;">-</div>
-        </div>
-    </div>
-
     <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('graphs')">Live Graphs</button>
         <button class="tab-btn" onclick="switchTab('singlePlayer')">Player Focus</button>
         <button class="tab-btn" onclick="switchTab('synergy')">Best Matchups</button>
     </div>
 
+    <!-- TAB 1: GRAPHS -->
     <div id="graphs" class="tab-content active">
         <div class="btn-container">
             <button onclick="updateData()">Refresh Data</button>
@@ -144,10 +124,36 @@
         </div>
     </div>
 
+    <!-- TAB 2: SINGLE PLAYER FOCUS -->
     <div id="singlePlayer" class="tab-content">
+        <!-- PLAYER SPECIFIC STATS BLURB -->
+        <div class="stats-blurb">
+            <div class="stat-item">
+                <div class="stat-label">Matches</div>
+                <div class="stat-value" id="stat-matches">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Avg Games / Session</div>
+                <div class="stat-value" id="stat-avg-games">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Avg RP / Session</div>
+                <div class="stat-value" id="stat-avg-rp">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Plays Best With</div>
+                <div class="stat-value" id="stat-best-team" style="font-size: 0.9rem;">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Plays Worst With</div>
+                <div class="stat-value" id="stat-worst-team" style="font-size: 0.9rem;">-</div>
+            </div>
+        </div>
+
         <div class="btn-container">
             <select id="playerSelect" onchange="updateData()">
-                </select>
+                <!-- Auto-populated via JS -->
+            </select>
             <button onclick="updateData()">Refresh Data</button>
             <button onclick="resetZoomAll()">Reset Zoom</button>
         </div>
@@ -156,6 +162,7 @@
         </div>
     </div>
 
+    <!-- TAB 3: SYNERGY -->
     <div id="synergy" class="tab-content">
         <div class="btn-container">
             <button onclick="updateData()">Refresh Data</button>
@@ -171,7 +178,8 @@
                     </tr>
                 </thead>
                 <tbody id="synergy-body">
-                    </tbody>
+                    <!-- Populated by JS -->
+                </tbody>
             </table>
         </div>
     </div>
@@ -216,54 +224,58 @@
 
         function getZoomOptions() { return { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }, pan: { enabled: true, mode: 'xy' } }; }
 
-        // --- STATS ENGINE ---
-        function updateStatsBlurb(data, sortedGroups) {
-            if (!data || data.length === 0) return;
+        // --- PLAYER SPECIFIC STATS ENGINE ---
+        function updateSinglePlayerStats(singleFilteredData, selectedUID, sortedGroups) {
+            if (!singleFilteredData || singleFilteredData.length === 0 || !selectedUID) return;
 
-            // 1. Total Matches & Sessions
-            const totalMatches = data.length;
+            // 1. Matches & Sessions
+            const totalMatches = singleFilteredData.length;
             const sessions = {};
-            data.forEach(d => {
+            singleFilteredData.forEach(d => {
                 const date = d.timestamp.split(' ')[0];
                 if (!sessions[date]) sessions[date] = [];
-                sessions[date].push(d);
+                sessions[date].push(d.scores[selectedUID]);
             });
             const numSessions = Object.keys(sessions).length;
-            const avgGames = (totalMatches / numSessions).toFixed(1);
+            const avgGames = numSessions > 0 ? (totalMatches / numSessions).toFixed(1) : 0;
 
-            // 2. Avg RP Per Session (Average player net gain/loss per day)
+            // 2. Avg RP Per Session
             let totalRPChange = 0;
-            let playerSessionCount = 0;
-            Object.values(sessions).forEach(dayData => {
-                if (dayData.length < 2) return;
-                const firstScores = dayData[0].scores;
-                const lastScores = dayData[dayData.length - 1].scores;
-                
-                const activePlayers = new Set([...Object.keys(firstScores), ...Object.keys(lastScores)]);
-                activePlayers.forEach(uid => {
-                    if (firstScores[uid] !== undefined && lastScores[uid] !== undefined) {
-                        totalRPChange += (lastScores[uid] - firstScores[uid]);
-                        playerSessionCount++;
-                    }
-                });
+            Object.values(sessions).forEach(dayScores => {
+                if (dayScores.length > 0) {
+                    const firstScore = dayScores[0];
+                    const lastScore = dayScores[dayScores.length - 1];
+                    totalRPChange += (lastScore - firstScore);
+                }
             });
-            const avgRP = playerSessionCount > 0 ? Math.round(totalRPChange / playerSessionCount) : 0;
+            const avgRP = numSessions > 0 ? Math.round(totalRPChange / numSessions) : 0;
             const rpSign = avgRP > 0 ? '+' : '';
             const rpClass = avgRP >= 0 ? 'positive' : 'negative';
 
-            // 3. Best / Worst Team (Filtered for meaningful sample size)
+            // 3. Best / Worst Team for this specific player
             let bestText = "N/A", worstText = "N/A";
-            const validGroups = sortedGroups.filter(g => g.matches >= 2);
-            if (validGroups.length > 0) {
-                const byAvg = [...validGroups].sort((a, b) => (b.netRP / b.matches) - (a.netRP / a.matches));
+            
+            // Only look at groups that include the selected player and have at least 2 matches
+            const playerGroups = sortedGroups.filter(g => g.uids.includes(selectedUID) && g.matches >= 2);
+            
+            if (playerGroups.length > 0) {
+                // Sort by average net RP per match
+                const byAvg = [...playerGroups].sort((a, b) => (b.netRP / b.matches) - (a.netRP / a.matches));
                 
+                const formatTeammates = (group) => {
+                    return group.uids
+                        .filter(uid => uid !== selectedUID) // Remove their own name
+                        .map(uid => NAME_MAP[uid] || uid)
+                        .join(' & ');
+                };
+
                 const best = byAvg[0];
-                const bestNames = best.uids.map(uid => NAME_MAP[uid] || uid).join(' & ');
+                const bestNames = formatTeammates(best) || 'Solo';
                 const bestAvg = (best.netRP / best.matches).toFixed(1);
                 bestText = `<span style="color: #2ecc71;">${bestNames} (+${bestAvg})</span>`;
                 
                 const worst = byAvg[byAvg.length - 1];
-                const worstNames = worst.uids.map(uid => NAME_MAP[uid] || uid).join(' & ');
+                const worstNames = formatTeammates(worst) || 'Solo';
                 const worstAvg = (worst.netRP / worst.matches).toFixed(1);
                 const wSign = worstAvg > 0 ? '+' : '';
                 worstText = `<span style="color: #e74c3c;">${worstNames} (${wSign}${worstAvg})</span>`;
@@ -369,7 +381,6 @@
                 if (!data || data.length === 0) return;
 
                 const sortedGroups = processSynergy(data);
-                updateStatsBlurb(data, sortedGroups);
 
                 const labels = data.map(d => d.timestamp);
                 const uids = [...new Set(data.flatMap(d => Object.keys(d.scores)))];
@@ -449,6 +460,9 @@
                             }
                         }
                     });
+
+                    // Update the stats blurb at the top of the single player tab
+                    updateSinglePlayerStats(singleFilteredData, selectedUID, sortedGroups);
 
                     const singleLabels = singleFilteredData.map(d => d.timestamp);
                     const singleDataPoints = singleFilteredData.map(d => d.scores[selectedUID]);
