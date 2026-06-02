@@ -3,10 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Apex Squad Tracker</title>
+    <title>VIP Apex Tracker</title>
+    <!-- Core Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Hammer.js for panning -->
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <!-- Zoom Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <!-- Annotation Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     
     <style>
@@ -86,7 +90,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>Squad Live Performance</h1>
+        <h1>VIP Apex Tracker</h1>
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('graphs')">Live Graphs</button>
             <button class="tab-btn" onclick="switchTab('singlePlayer')">Player Focus</button>
@@ -94,6 +98,7 @@
         </div>
     </div>
 
+    <!-- TAB 1: GRAPHS -->
     <div id="graphs" class="tab-content active">
         <div class="btn-container">
             <button onclick="updateData()">Refresh Data</button>
@@ -105,10 +110,12 @@
         </div>
     </div>
 
+    <!-- TAB 2: SINGLE PLAYER FOCUS -->
     <div id="singlePlayer" class="tab-content">
         <div class="btn-container">
             <select id="playerSelect" onchange="updateData()">
-                </select>
+                <!-- Auto-populated via JS -->
+            </select>
             <button onclick="updateData()">Refresh Data</button>
             <button onclick="resetZoomAll()">Reset Zoom</button>
         </div>
@@ -117,6 +124,7 @@
         </div>
     </div>
 
+    <!-- TAB 3: SYNERGY -->
     <div id="synergy" class="tab-content">
         <div class="btn-container">
             <button onclick="updateData()">Refresh Data</button>
@@ -132,7 +140,8 @@
                     </tr>
                 </thead>
                 <tbody id="synergy-body">
-                    </tbody>
+                    <!-- Populated by JS -->
+                </tbody>
             </table>
         </div>
     </div>
@@ -201,22 +210,45 @@
 
                 const activeUIDs = currentUIDs.filter(uid => deltas[uid] !== undefined && deltas[uid] !== 0);
 
-                for (let i = 0; i < activeUIDs.length; i++) {
+                const currentTrios = [];
+
+                // 1. Generate and Register Trios
+                for (let i = 0; i < activeUIDs.length - 2; i++) {
+                    for (let j = i + 1; j < activeUIDs.length - 1; j++) {
+                        for (let k = j + 1; k < activeUIDs.length; k++) {
+                            const uid1 = activeUIDs[i];
+                            const uid2 = activeUIDs[j];
+                            const uid3 = activeUIDs[k];
+                            
+                            const trioKey = [uid1, uid2, uid3].sort().join('|');
+                            currentTrios.push([uid1, uid2, uid3]);
+                            
+                            if (!groups[trioKey]) groups[trioKey] = { uids: [uid1, uid2, uid3], type: 'Trio', matches: 0, netRP: 0 };
+                            groups[trioKey].matches += 1;
+                            groups[trioKey].netRP += (deltas[uid1] + deltas[uid2] + deltas[uid3]) / 3;
+                        }
+                    }
+                }
+
+                // 2. Generate and Register Duos (ONLY if they aren't part of a Trio we just made)
+                for (let i = 0; i < activeUIDs.length - 1; i++) {
                     for (let j = i + 1; j < activeUIDs.length; j++) {
                         const uid1 = activeUIDs[i];
                         const uid2 = activeUIDs[j];
                         
-                        const duoKey = [uid1, uid2].sort().join('|');
-                        if (!groups[duoKey]) groups[duoKey] = { uids: [uid1, uid2], type: 'Duo', matches: 0, netRP: 0 };
-                        groups[duoKey].matches += 1;
-                        groups[duoKey].netRP += (deltas[uid1] + deltas[uid2]) / 2; 
+                        let isPartOfTrio = false;
+                        for (const trio of currentTrios) {
+                            if (trio.includes(uid1) && trio.includes(uid2)) {
+                                isPartOfTrio = true;
+                                break;
+                            }
+                        }
 
-                        for (let k = j + 1; k < activeUIDs.length; k++) {
-                            const uid3 = activeUIDs[k];
-                            const trioKey = [uid1, uid2, uid3].sort().join('|');
-                            if (!groups[trioKey]) groups[trioKey] = { uids: [uid1, uid2, uid3], type: 'Trio', matches: 0, netRP: 0 };
-                            groups[trioKey].matches += 1;
-                            groups[trioKey].netRP += (deltas[uid1] + deltas[uid2] + deltas[uid3]) / 3;
+                        if (!isPartOfTrio) {
+                            const duoKey = [uid1, uid2].sort().join('|');
+                            if (!groups[duoKey]) groups[duoKey] = { uids: [uid1, uid2], type: 'Duo', matches: 0, netRP: 0 };
+                            groups[duoKey].matches += 1;
+                            groups[duoKey].netRP += (deltas[uid1] + deltas[uid2]) / 2;
                         }
                     }
                 }
@@ -347,7 +379,6 @@
                 // --- TAB 2: SINGLE PLAYER CHART ---
                 const selectedUID = document.getElementById('playerSelect').value;
                 if (selectedUID) {
-                    // Filter to only timestamps where this player existed
                     const singleFilteredData = data.filter(d => d.scores[selectedUID] !== undefined);
                     const singleLabels = singleFilteredData.map(d => d.timestamp);
                     const singleDataPoints = singleFilteredData.map(d => d.scores[selectedUID]);
@@ -367,7 +398,7 @@
                                     label: NAME_MAP[selectedUID] || selectedUID,
                                     data: singleDataPoints,
                                     borderColor: playerColor,
-                                    borderWidth: 3, // Thicker line for focus
+                                    borderWidth: 3, 
                                     spanGaps: true
                                 }] 
                             },
