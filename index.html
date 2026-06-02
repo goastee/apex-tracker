@@ -28,7 +28,8 @@
         /* --- STATS BLURB --- */
         .stats-blurb {
             display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; 
-            background: #1a1a1a; padding: 15px; border-radius: 8px; margin-bottom: 15px; width: 100%;
+            background: #1a1a1a; padding: 15px; border-radius: 8px; margin-bottom: 15px; 
+            width: 100%; max-width: 1000px; margin-left: auto; margin-right: auto;
         }
         .stat-item {
             text-align: center; background: #222; padding: 10px; border-radius: 5px; flex: 1 1 130px;
@@ -59,13 +60,14 @@
         .tab-btn.active { background: #2ecc71; color: white; }
         .tab-btn:hover:not(.active) { background: #333; }
         
-        .tab-content { display: none; width: 100%; flex: 1; flex-direction: column; max-width: 1000px; }
+        /* Removed the max-width from here so charts can span full screen */
+        .tab-content { display: none; width: 100%; flex: 1; flex-direction: column; }
         .tab-content.active { display: flex; }
         
         /* --- GRAPHS --- */
         .charts-container { 
             display: flex; width: 100%; gap: 20px; flex-wrap: wrap; 
-            padding: 0; box-sizing: border-box; flex: 1; 
+            padding: 0 10px; box-sizing: border-box; flex: 1; 
         }
         .chart-wrapper { 
             flex: 1 1 600px; background: #1a1a1a; 
@@ -75,7 +77,8 @@
 
         /* --- SYNERGY PANEL --- */
         .synergy-container {
-            width: 100%; background: #1a1a1a; border-radius: 8px; padding: 20px; box-sizing: border-box;
+            width: 100%; max-width: 800px; margin: 0 auto;
+            background: #1a1a1a; border-radius: 8px; padding: 20px; box-sizing: border-box;
         }
         .synergy-table { width: 100%; border-collapse: collapse; text-align: left; }
         .synergy-table th, .synergy-table td { padding: 12px; border-bottom: 1px solid #333; }
@@ -95,7 +98,7 @@
             .btn-container { margin-bottom: 10px; gap: 5px; } 
             button, select { padding: 6px 12px; font-size: 0.85rem; } 
             .tabs { margin-bottom: 10px; }
-            .charts-container { flex-direction: column; gap: 10px; }
+            .charts-container { flex-direction: column; gap: 10px; padding: 0; }
             .chart-wrapper { flex: 1; min-height: 0; padding: 10px; } 
             .synergy-table th, .synergy-table td { padding: 8px 4px; font-size: 0.85rem; }
         }
@@ -425,7 +428,7 @@
                         let scoreMoved = false;
                         const dData = dailyData.map(d => {
                             if (d.scores[uid] !== undefined) {
-                                if (d.scores[uid] !== startScore) scoreMoved = true;
+                                if (d.scores[uid] !== startScore) score.Moved = true;
                                 return d.scores[uid] - startScore;
                             }
                             return null;
