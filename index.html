@@ -200,6 +200,20 @@
         };
         const getColor = (uid, i) => PLAYER_COLORS[uid] || COLORS[i % COLORS.length];
 
+        // Show a point marker only where the value changes (i.e. the first and last of any flat run),
+        // and hide the interior points of a flat run so long unchanged stretches aren't buried in dots.
+        // The full data array is kept, so the line itself is drawn continuously.
+        function pointRadii(arr, radius = 3) {
+            return arr.map((v, i) => {
+                if (v === null || v === undefined) return 0;
+                const prev = arr[i - 1];
+                const next = arr[i + 1];
+                const sameAsPrev = (prev !== null && prev !== undefined && prev === v);
+                const sameAsNext = (next !== null && next !== undefined && next === v);
+                return (sameAsPrev && sameAsNext) ? 0 : radius; // interior of flat run -> hidden
+            });
+        }
+
         // --- UI LOGIC ---
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -397,12 +411,16 @@
                 const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
                 const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
 
-                const datasets = uids.map((uid, i) => ({
-                    label: NAME_MAP[uid] || uid,
-                    data: data.map(d => d.scores[uid] !== undefined ? d.scores[uid] : null),
-                    borderColor: getColor(uid, i),
-                    spanGaps: true
-                }));
+                const datasets = uids.map((uid, i) => {
+                    const arr = data.map(d => d.scores[uid] !== undefined ? d.scores[uid] : null);
+                    return {
+                        label: NAME_MAP[uid] || uid,
+                        data: arr,
+                        borderColor: getColor(uid, i),
+                        pointRadius: pointRadii(arr),
+                        spanGaps: true
+                    };
+                });
 
                 if (!mainChart) {
                     mainChart = new Chart(document.getElementById('mainChart'), {
@@ -437,7 +455,7 @@
                             }
                             return null;
                         });
-                        dailyDatasets.push({ label: NAME_MAP[uid] || uid, data: dData, borderColor: getColor(uid, i), spanGaps: true, hidden: !scoreMoved });
+                        dailyDatasets.push({ label: NAME_MAP[uid] || uid, data: dData, borderColor: getColor(uid, i), pointRadius: pointRadii(dData), spanGaps: true, hidden: !scoreMoved });
                     }
                 });
 
