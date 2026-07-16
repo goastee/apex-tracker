@@ -13,7 +13,7 @@ SQUAD = [
     {"uid": "1012860147038", "label": "Talon", "platform": "PC"},
     {"uid": "1011877813719", "label": "Anubis", "platform": "PC"},
     {"uid": "2433485727", "label": "trevor", "platform": "PC"},
-    {"uid": "1004414665870", "label": "stunninggunner", "platform": "PC"},
+    {"uid": "76561198322670382", "label": "stunninggunner", "platform": "PC"},
     {"uid": "1007818122992", "label": "Zilch", "platform": "PC"},
     {"uid": "1007823821914", "label": "Ryu", "platform": "PC"},
     {"uid": "1004525474326", "label": "mamapunk", "platform": "PC"}
