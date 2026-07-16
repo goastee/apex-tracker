@@ -214,6 +214,38 @@
             });
         }
 
+        // --- INACTIVITY AUTO-HIDE ---
+        // A player whose RP hasn't changed within this many days (measured from the latest data point)
+        // starts toggled OFF on the main chart, to keep it clean. Click the legend to show them again.
+        // This mirrors the daily chart's "only show players who moved" behavior, over a longer window.
+        const INACTIVE_DAYS = 21; // ~3 weeks; tweak to taste (14 = 2 weeks, 28 = 4 weeks)
+
+        // Parse a "MM/DD HH:MM" timestamp into a Date. The data carries no year, so we infer it:
+        // anything that would land after the reference (latest) date is rolled back a year, which
+        // correctly handles a single Dec->Jan wrap in the history.
+        function parseTs(ts, refDate) {
+            const [datePart, timePart = '0:0'] = String(ts).split(' ');
+            const [mo, da] = datePart.split('/').map(Number);
+            const [hh, mi] = timePart.split(':').map(Number);
+            if (!mo || !da) return refDate || new Date(2000, 0, 1); // malformed/time-only entry -> treat as recent
+            let d = new Date(2000, mo - 1, da, hh || 0, mi || 0);
+            if (refDate && d.getTime() > refDate.getTime() + 60000) d = new Date(1999, mo - 1, da, hh || 0, mi || 0);
+            return d;
+        }
+
+        // Days since a player's most recent RP change (Infinity if they never appear in the data).
+        function daysIdle(data, uid, refDate) {
+            let lastTs = null, prev;
+            for (const d of data) {
+                const s = d.scores[uid];
+                if (s !== undefined) {
+                    if (prev === undefined || s !== prev) lastTs = d.timestamp;
+                    prev = s;
+                }
+            }
+            return lastTs ? (refDate - parseTs(lastTs, refDate)) / 86400000 : Infinity;
+        }
+
         // --- UI LOGIC ---
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -411,6 +443,7 @@
                 const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
                 const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
 
+                const refDate = parseTs(labels[labels.length - 1]);
                 const datasets = uids.map((uid, i) => {
                     const arr = data.map(d => d.scores[uid] !== undefined ? d.scores[uid] : null);
                     return {
@@ -418,6 +451,7 @@
                         data: arr,
                         borderColor: getColor(uid, i),
                         pointRadius: pointRadii(arr),
+                        hidden: daysIdle(data, uid, refDate) > INACTIVE_DAYS, // auto-hide inactive players
                         spanGaps: true
                     };
                 });
