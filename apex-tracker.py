@@ -28,7 +28,9 @@ def fetch_stats():
             response = requests.get(url, timeout=10)
             data = response.json()
             if 'global' in data and 'rank' in data['global']:
-                scores[p['uid']] = int(data['global']['rank']['rankScore'])
+                rp = int(data['global']['rank']['rankScore'])
+                if rp > 0:  # skip 0 = unranked (split reset / not placed); treat as no-data
+                    scores[p['uid']] = rp
         except Exception:
             pass 
     return scores

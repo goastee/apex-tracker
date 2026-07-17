@@ -200,6 +200,13 @@
         };
         const getColor = (uid, i) => PLAYER_COLORS[uid] || COLORS[i % COLORS.length];
 
+        // Treat a rankScore of 0 as "no data": 0 means unranked (a ranked-split reset or no placement),
+        // not real RP, so it must not draw a line or count as recent activity. Returns the score, or null.
+        const getScore = (d, uid) => {
+            const s = d.scores[uid];
+            return (s === undefined || s === 0) ? null : s;
+        };
+
         // Show a point marker only where the value changes (i.e. the first and last of any flat run),
         // and hide the interior points of a flat run so long unchanged stretches aren't buried in dots.
         // The full data array is kept, so the line itself is drawn continuously.
@@ -227,7 +234,7 @@
             const [datePart, timePart = '0:0'] = String(ts).split(' ');
             const [mo, da] = datePart.split('/').map(Number);
             const [hh, mi] = timePart.split(':').map(Number);
-            if (!mo || !da) return refDate || new Date(2000, 0, 1); // malformed/time-only entry -> treat as recent
+            if (!mo || !da) return new Date(2000, 0, 1); // date-less legacy timestamp (old time-only format) -> treat as very old
             let d = new Date(2000, mo - 1, da, hh || 0, mi || 0);
             if (refDate && d.getTime() > refDate.getTime() + 60000) d = new Date(1999, mo - 1, da, hh || 0, mi || 0);
             return d;
@@ -237,8 +244,8 @@
         function daysIdle(data, uid, refDate) {
             let lastTs = null, prev;
             for (const d of data) {
-                const s = d.scores[uid];
-                if (s !== undefined) {
+                const s = getScore(d, uid);
+                if (s !== null) {
                     if (prev === undefined || s !== prev) lastTs = d.timestamp;
                     prev = s;
                 }
@@ -439,13 +446,13 @@
                 populateDropdown(uids);
 
                 // --- TAB 1: MAIN CHARTS ---
-                const allScores = data.flatMap(d => Object.values(d.scores));
+                const allScores = data.flatMap(d => Object.values(d.scores)).filter(v => v !== 0);
                 const minRP = allScores.length ? Math.max(0, Math.min(...allScores) - 200) : 0;
                 const maxRP = allScores.length ? Math.max(...allScores) + 200 : 20000;
 
                 const refDate = parseTs(labels[labels.length - 1]);
                 const datasets = uids.map((uid, i) => {
-                    const arr = data.map(d => d.scores[uid] !== undefined ? d.scores[uid] : null);
+                    const arr = data.map(d => getScore(d, uid));
                     return {
                         label: NAME_MAP[uid] || uid,
                         data: arr,
@@ -477,15 +484,15 @@
                 const dailyDatasets = [];
                 
                 uids.forEach((uid, i) => {
-                    const startEntry = dailyData.find(d => d.scores[uid] !== undefined);
+                    const startEntry = dailyData.find(d => getScore(d, uid) !== null);
                     if (startEntry) {
-                        const startScore = startEntry.scores[uid];
+                        const startScore = getScore(startEntry, uid);
                         let scoreMoved = false;
                         const dData = dailyData.map(d => {
-                            if (d.scores[uid] !== undefined) {
-                                // FIXED TYPO HERE
-                                if (d.scores[uid] !== startScore) scoreMoved = true;
-                                return d.scores[uid] - startScore;
+                            const s = getScore(d, uid);
+                            if (s !== null) {
+                                if (s !== startScore) scoreMoved = true;
+                                return s - startScore;
                             }
                             return null;
                         });
@@ -511,8 +518,8 @@
                     const singleFilteredData = [];
                     let prevScore = null;
                     data.forEach(d => {
-                        const currentScore = d.scores[selectedUID];
-                        if (currentScore !== undefined) {
+                        const currentScore = getScore(d, selectedUID);
+                        if (currentScore !== null) {
                             if (prevScore === null || currentScore !== prevScore) {
                                 singleFilteredData.push(d);
                                 prevScore = currentScore;
@@ -523,7 +530,7 @@
                     updateSinglePlayerStats(singleFilteredData, selectedUID, sortedGroups);
 
                     const singleLabels = singleFilteredData.map(d => d.timestamp);
-                    const singleDataPoints = singleFilteredData.map(d => d.scores[selectedUID]);
+                    const singleDataPoints = singleFilteredData.map(d => getScore(d, selectedUID));
                     const playerIndex = uids.indexOf(selectedUID);
                     const playerColor = getColor(selectedUID, playerIndex >= 0 ? playerIndex : 0);
                     const singleMinRP = singleDataPoints.length ? Math.max(0, Math.min(...singleDataPoints) - 100) : 0;
