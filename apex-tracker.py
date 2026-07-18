@@ -16,6 +16,7 @@ SQUAD = [
     {"uid": "76561198322670382", "label": "stunninggunner", "platform": "PC"},
     {"uid": "1007818122992", "label": "Zilch", "platform": "PC"},
     {"uid": "1007823821914", "label": "Ryu", "platform": "PC"},
+    {"uid": "1000712994147", "label": "Acquah", "platform": "PC"},
     {"uid": "1004525474326", "label": "mamapunk", "platform": "PC"}
 ]
 JSON_FILE = "history.json"
